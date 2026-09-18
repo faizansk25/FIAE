@@ -1,0 +1,90 @@
+[build-system]
+requires = ["setuptools>=68", "cython>=3.0", "numpy>=1.24"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "fiae"
+version = "0.0.1"
+description = "FIAE - Feature Intelligence & Architecture Engine"
+readme = "README.md"
+license = {file = "LICENSE"}
+requires-python = ">=3.10"
+# NFR-002: core import requires standard library only.
+# Tier-1/2 capabilities live in optional dependency groups.
+dependencies = []
+
+[project.scripts]
+fiae = "fiae.cli:main"
+
+[project.optional-dependencies]
+dev = ["pytest>=7.0", "cython>=3.0"]
+tier1 = ["numpy", "scikit-learn", "joblib", "polars", "pandas"]
+tier2 = ["lightgbm", "xgboost", "catboost", "optuna"]
+build = ["cython>=3.0", "numpy>=1.24"]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
+# Test the src tree directly (no editable install needed) — keeps CI free
+# of the Cython build while still exercising the packaged layout.
+pythonpath = ["src"]
+
+[tool.ruff]
+target-version = "py310"
+line-length = 100
+
+[tool.ruff.lint]
+# Correctness-first baseline. Style/annotation-modernization families are
+# left as opt-in so reviews stay focused on real defects.
+select = [
+  "E",      # pycodestyle errors (syntax + obvious mistakes)
+  "F",      # pyflakes: undefined names, unused imports, f-string bugs
+  "W",      # whitespace correctness
+  "B",      # bugbear: real-bug patterns (mutable defaults, dup values)
+  "S",      # bandit: security-relevant smells
+  "SIM",    # simplification (flagged, not auto-applied)
+  "C4",     # comprehension correctness
+  "RET",    # return-structure smells
+  "RUF",    # ruff-specific correctness (unused noqa, dup dunder all)
+  "DTZ",    # naive datetime usage
+]
+ignore = [
+  # Fail-open design (doc 11 "never crash"): CLI/GUI/intake paths swallow
+  # broad exceptions on purpose. Narrowing every site is a separate audit.
+  "BLE001", # blind except
+  "S110",   # try-except-pass
+  "S112",   # try-except-continue
+  # Style-only, no behavioral value for this codebase:
+  "SIM108", # ternary rewrites hurt readability here
+  "RET504", # named return then return is fine
+  # Domain-intentional (not defects):
+  "E501",   # no project-wide formatter enforced; reflows are pure churn
+  "B905",   # zip() truncation relied upon for ragged column scans; strict
+            # per-site decisions belong to the CV audit, not lint
+  "S311",   # random.* is the product: deterministic seeded CV/HPO, non-crypto
+  "S608",   # adapters interpolate *identifiers* after validation; values are
+            # always parameterized
+  "DTZ007", # naive datetimes are the domain representation (doc 05); tz is
+            # attached at the parse boundary in ops_datetime
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Re-export modules: unused imports are the public API surface; grouped,
+# sectioned `__all__` ordering is intentional documentation style.
+"**/__init__.py" = ["F401", "RUF022"]
+# Box-drawing wordmark glyphs are intentional, not typos.
+"src/fiae/identity.py" = ["RUF001", "E501"]
+# Dashboard/web UI strings intentionally use typographic glyphs (× – σ).
+"src/fiae/webgui.py" = ["RUF001"]
+"src/fiae/cli_dashboard.py" = ["RUF001"]
+# Tests intentionally use asserts and loose fixtures; idiomatic patterns
+# like imports below module docstrings, file handles held across assertions,
+# and broad pytest.raises(Exception) probes are accepted.
+"tests/**" = ["S", "B011", "E402", "SIM115", "B017", "DTZ001", "RUF012"]
+
+[tool.ruff.format]
+quote-style = "double"
+

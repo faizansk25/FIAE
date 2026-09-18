@@ -1,0 +1,52 @@
+# ── Python ──────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# ── Build / Distribution ───────────────────────────────────────────────
+build/
+dist/
+*.egg-info/
+*.egg
+*.whl
+
+# ── Virtual environments ───────────────────────────────────────────────
+.venv/
+venv/
+env/
+ENV/
+
+# ── IDE / Editor ───────────────────────────────────────────────────────
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.DS_Store
+Thumbs.db
+
+# ── Testing / Coverage ────────────────────────────────────────────────
+.pytest_cache/
+.coverage
+htmlcov/
+coverage.xml
+pytest-results.xml
+*.cover
+
+# ── FIAE runtime ──────────────────────────────────────────────────────
+.fiae/
+runs/
+*.sqlite
+*.db
+
+# ── Freebuff internal ────────────────────────────────────────────────
+.freebuff/
+
+# ── Generated test data ──────────────────────────────────────────────
+tests/real_test_data/
+
+# ── Misc ──────────────────────────────────────────────────────────────
+pytest_out.txt
+pytest_err.txt
+*.log

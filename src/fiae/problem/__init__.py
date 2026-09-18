@@ -1,0 +1,73 @@
+"""Problem formulation, validation, and leakage intelligence (doc 03)."""
+
+from .task import (
+    MetricTemplate,
+    TaskInference,
+    infer_task,
+    make_problem,
+    route_metrics,
+)
+from .splits import (
+    DEFAULT_NESTED_POLICY,
+    SplitSpec,
+    group_kfold_indexes,
+    kfold_indexes,
+    make_splits,
+    reserve_final_holdout,
+    stratified_kfold_indexes,
+    time_ordered_indexes,
+)
+from .leakage import (
+    CrossFitTargetEncoder,
+    FoldSafetyReport,
+    check_target_history_safety,
+    confirm_unavailable,
+    detect_deterministic,
+    fold_safety_report,
+    rank_auc,
+    review_availability,
+    statistical_triage,
+)
+from .calibration import (
+    BinnedCalibrator,
+    FrozenDecisionPolicy,
+    ThresholdResult,
+    brier,
+    distribution_shift_probe,
+    freeze_decision_policy,
+    log_loss_binary,
+    optimize_threshold,
+)
+
+__all__ = [
+    "DEFAULT_NESTED_POLICY",
+    "BinnedCalibrator",
+    "CrossFitTargetEncoder",
+    "FoldSafetyReport",
+    "FrozenDecisionPolicy",
+    "MetricTemplate",
+    "SplitSpec",
+    "TaskInference",
+    "ThresholdResult",
+    "brier",
+    "check_target_history_safety",
+    "confirm_unavailable",
+    "detect_deterministic",
+    "distribution_shift_probe",
+    "fold_safety_report",
+    "freeze_decision_policy",
+    "group_kfold_indexes",
+    "infer_task",
+    "kfold_indexes",
+    "log_loss_binary",
+    "make_problem",
+    "make_splits",
+    "optimize_threshold",
+    "rank_auc",
+    "reserve_final_holdout",
+    "review_availability",
+    "route_metrics",
+    "statistical_triage",
+    "stratified_kfold_indexes",
+    "time_ordered_indexes",
+]
