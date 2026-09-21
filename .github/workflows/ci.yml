@@ -7,6 +7,38 @@ on:
     branches: [main]
 
 jobs:
+  workflow-lint:
+    # A workflow file that fails to parse never runs — so nothing else in
+    # CI can catch it. This job is the only guard: parse every workflow
+    # with a strict YAML loader, then run actionlint for semantic checks
+    # (invalid actions refs, bad expressions, matrix inconsistencies).
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Strict-parse every workflow YAML
+        run: |
+          python - <<'EOF'
+          import glob, sys, yaml
+          files = glob.glob(".github/workflows/*.yml") + glob.glob(".github/workflows/*.yaml")
+          assert files, "no workflow files found"
+          for f in files:
+              d = yaml.safe_load(open(f, encoding="utf-8"))
+              assert d.get("jobs"), f"{f}: no jobs"
+              for name, job in d["jobs"].items():
+                  assert "runs-on" in job, f"{f}: job {name} missing runs-on"
+                  for step in job.get("steps", []):
+                      assert "uses" in step or "run" in step, f"{f}: {name} step without uses/run"
+              print(f"{f}: OK ({len(d['jobs'])} jobs)")
+          EOF
+      - name: Install actionlint
+        run: |
+          curl -sSfL https://raw.githubusercontent.com/rhysd/actionlint/main/scripts/download-actionlint.bash | bash -s --
+      - name: actionlint (semantic workflow checks)
+        run: ./actionlint -color
+
   secrets:
     runs-on: ubuntu-latest
     steps:
