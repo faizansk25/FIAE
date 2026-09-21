@@ -9,6 +9,30 @@ description = "FIAE - Feature Intelligence & Architecture Engine"
 readme = "README.md"
 license = {file = "LICENSE"}
 requires-python = ">=3.10"
+keywords = [
+  "feature-engineering",
+  "automated-feature-engineering",
+  "machine-learning",
+  "data-science",
+  "leakage-detection",
+  "data-validation",
+  "data-profiling",
+  "feature-selection",
+  "mlops",
+  "sklearn",
+]
+classifiers = [
+  "Development Status :: 4 - Beta",
+  "Intended Audience :: Developers",
+  "Intended Audience :: Science/Research",
+  "Topic :: Scientific/Engineering :: Artificial Intelligence",
+  "Topic :: Software Development :: Libraries :: Python Modules",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.10",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Operating System :: OS Independent",
+]
 # NFR-002: core import requires standard library only.
 # Tier-1/2 capabilities live in optional dependency groups.
 dependencies = []

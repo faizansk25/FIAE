@@ -13,6 +13,8 @@
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
 [![Tests](https://img.shields.io/badge/tests-860%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
+[![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
+[![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
 
 ---
 
@@ -48,6 +50,11 @@
 - [Citation](#citation)
    - [License](#license)
    - [Support FIAE](#support-fiae)
+
+> **New here?** Skim [Why FIAE](#why-fiae), then run the 60-second end-to-end
+> example — no credentials, no GPU: [`examples/churn/run_api.py`](examples/churn/run_api.py).
+> Contributing? Start with [CONTRIBUTING.md](CONTRIBUTING.md) — it contains the
+> exact three commands CI runs, so you can validate a PR before opening it.
 
 ---
 
@@ -833,6 +840,11 @@ FIAE follows strict design principles. Before contributing:
 5. **Tests are mandatory** — no operator ships without passing its contract tests
 
 See `md/00_MASTER_BLUEPRINT.md` for the 15 hard principles.
+
+Full setup instructions, the pre-PR command loop, and the PR policy
+(design-doc reference + risk label + test evidence) live in
+[CONTRIBUTING.md](CONTRIBUTING.md). Bug reports and feature requests have
+templates; security issues go through [SECURITY.md](SECURITY.md) privately.
 
 ---
 
