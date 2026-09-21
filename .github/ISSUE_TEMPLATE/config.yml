@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Security vulnerability
+    url: https://github.com/faizansk25/FIAE/blob/main/SECURITY.md
+    about: Report security issues privately — do not open a public issue.
+  - name: Questions & discussions
+    url: https://github.com/faizansk25/FIAE/discussions
+    about: Ask how FIAE works or how to approach a dataset before filing an issue.

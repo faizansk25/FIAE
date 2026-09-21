@@ -50,3 +50,6 @@ tests/real_test_data/
 pytest_out.txt
 pytest_err.txt
 *.log
+
+# -- Local AI agent skills (personal tooling, not part of FIAE) --
+.agents/
