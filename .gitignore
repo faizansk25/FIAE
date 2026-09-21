@@ -53,3 +53,7 @@ pytest_err.txt
 
 # -- Local AI agent skills (personal tooling, not part of FIAE) --
 .agents/
+
+# -- Generated Cython C artifacts (built from .py at package time) --
+src/fiae/*.c
+src/fiae/**/*.c
