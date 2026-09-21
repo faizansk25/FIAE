@@ -1,0 +1,78 @@
+name: Release
+
+# Tag-triggered release: build → verify → publish.
+# Every wheel is installed into a clean venv and validated (import path,
+# full test suite, example smoke) BEFORE anything touches PyPI.
+# Publishing uses PyPI trusted publishing (OIDC) — no tokens stored.
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: Install build tool
+        run: pip install build twine
+      - name: Build sdist and wheel
+        run: python -m build
+      - name: Check distribution metadata
+        run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/
+
+  verify:
+    needs: build
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Install wheel into clean venv and verify
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "Windows" ]; then
+            PYBIN="verify-venv/Scripts/python"
+          else
+            PYBIN="verify-venv/bin/python"
+          fi
+          python -m venv verify-venv
+          "$PYBIN" -m pip install --upgrade pip
+          "$PYBIN" -m pip install dist/*.whl
+          "$PYBIN" -c "import fiae, sys; assert 'site-packages' in fiae.__file__, fiae.__file__; print('import OK:', fiae.__file__)"
+          "$PYBIN" -m pytest tests/
+          "$PYBIN" examples/churn/run_api.py
+
+  publish:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write  # PyPI trusted publishing (OIDC)
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist/
+      - name: Publish to PyPI
+        uses: pypa/gh-action-pypi-publish@v1.14.2
