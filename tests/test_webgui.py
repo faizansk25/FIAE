@@ -582,3 +582,113 @@ class TestAnalystLayer:
         r = build_report(p)
         texts = " ".join(i["text"] for i in r["insights"])
         assert "outliers" in texts
+
+
+class TestTimeSeriesLayer:
+    """M22: time-series intelligence (trend, ACF, seasonality)."""
+
+    def _mk_ts(self, tmp_path, rows, name="ts.csv"):
+        p = tmp_path / name
+        with open(p, "w", newline="", encoding="utf-8") as f:
+            w = csv.writer(f)
+            w.writerow(list(rows[0].keys()))
+            for r in rows:
+                w.writerow(list(r.values()))
+        return str(p)
+
+    def test_unit_helpers(self):
+        from fiae.report import _acf, _dominant_lag, _seasonality_strength
+        # strong linear ramp -> lag-1 autocorrelation near 1
+        ramp = [float(i) for i in range(200)]
+        a = _acf(ramp, max_lag=10)
+        assert a[0] == 1.0
+        assert a[1] > 0.9
+        # white-ish alternating series -> lag-1 strongly negative
+        alt = [1.0 if i % 2 else -1.0 for i in range(200)]
+        assert _acf(alt, max_lag=2)[1] < -0.9
+        # dominant lag: season of 7 shows up above threshold
+        import math as _m
+        seas = [(_m.sin(2 * _m.pi * i / 7),)[0] for i in range(140)]
+        assert _dominant_lag(_acf(seas, max_lag=24)) in (6, 7, 8)
+        # seasonality strength: pure period-7 sine explains almost everything
+        assert _seasonality_strength(seas, 7) > 0.9
+        assert _seasonality_strength(ramp, 7) < 0.2
+
+    def test_trend_slope_and_direction(self):
+        from fiae.report import _linear_trend
+        import datetime as dt
+        t0 = dt.datetime(2026, 1, 1)
+        ts = [(t0 + dt.timedelta(days=i)).timestamp() for i in range(60)]
+        up = _linear_trend(ts, [float(i) for i in range(60)])
+        assert up["slope_per_day"] > 0.9 and up["r"] > 0.99
+        down = _linear_trend(ts, [float(60 - i) for i in range(60)])
+        assert down["slope_per_day"] < -0.9
+        flat = _linear_trend(ts, [5.0] * 60)
+        assert flat["r"] == 0.0
+
+    def test_timeseries_detected_on_datetime_index(self, tmp_path):
+        from fiae.report import build_report
+        import datetime as dt
+        t0 = dt.datetime(2026, 1, 1)
+        rows = []
+        for i in range(120):
+            d = (t0 + dt.timedelta(days=i)).strftime("%Y-%m-%d")
+            rows.append({"date": d, "v": float(i) + (5 if i % 7 == 0 else 0)})
+        p = self._mk_ts(tmp_path, rows)
+        r = build_report(p)
+        tsr = r["timeseries"]
+        assert tsr is not None
+        assert tsr["index_column"] == "date"
+        assert "v" in tsr["series"]
+        entry = tsr["series"]["v"]
+        assert entry["n"] == 120
+        assert abs(entry["trend"]["slope_per_day"] - 1.0) < 0.1
+        assert len(entry["acf"]) == 25  # lag 0..24
+        assert entry["acf"][0] == 1.0
+
+    def test_timeseries_absent_without_datetime(self, tmp_path):
+        from fiae.report import build_report
+        p = self._mk_ts(tmp_path, [{"a": i, "b": 2 * i} for i in range(80)])
+        assert build_report(p)["timeseries"] is None
+
+    def test_timeseries_absent_when_series_too_short(self, tmp_path):
+        from fiae.report import build_report
+        import datetime as dt
+        t0 = dt.datetime(2026, 1, 1)
+        rows = [{"date": (t0 + dt.timedelta(days=i)).strftime("%Y-%m-%d"),
+                 "v": float(i)} for i in range(10)]  # < MIN_TS_POINTS
+        p = self._mk_ts(tmp_path, rows)
+        assert build_report(p)["timeseries"] is None
+
+    def test_trend_insight_advises_time_aware_splits(self, tmp_path):
+        from fiae.report import build_report
+        import datetime as dt
+        t0 = dt.datetime(2026, 1, 1)
+        rows = [{"date": (t0 + dt.timedelta(days=i)).strftime("%Y-%m-%d"),
+                 "v": float(3 * i)} for i in range(100)]
+        p = self._mk_ts(tmp_path, rows)
+        r = build_report(p)
+        texts = " ".join(i["text"] for i in r["insights"])
+        assert "time-aware splits" in texts
+
+    def test_seasonality_insight_fires(self, tmp_path):
+        from fiae.report import build_report
+        import datetime as dt
+        import math
+        t0 = dt.datetime(2026, 1, 1)
+        rows = [{"date": (t0 + dt.timedelta(days=i)).strftime("%Y-%m-%d"),
+                 "v": 100 * math.sin(2 * math.pi * i / 7)}
+                for i in range(140)]
+        p = self._mk_ts(tmp_path, rows)
+        r = build_report(p)
+        tsr = r["timeseries"]
+        assert tsr is not None
+        entry = tsr["series"]["v"]
+        assert entry["seasonality"]["strength"] > 0.5
+        texts = " ".join(i["text"] for i in r["insights"])
+        assert "seasonal" in texts
+
+    def test_gui_contains_timeseries_renderers(self):
+        html = gui_html()
+        for tok in ("svgACF", "svgTrend", "repTsPanel", "repTsIndex"):
+            assert tok in html

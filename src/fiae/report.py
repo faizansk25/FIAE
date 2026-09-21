@@ -28,6 +28,12 @@ MAX_SCATTER_PAIRS = 4           # strongest |r| pairs to sample
 MAX_RIDGE_COLUMNS = 4           # ridgeline columns
 MAX_RIDGE_GROUPS = 6            # ridgeline target classes
 MAX_OUTLIER_EXAMPLES = 20       # sample outlier values kept per column
+MAX_TS_LAG = 24                 # ACF lags computed per series
+MIN_TS_POINTS = 30              # a series shorter than this is not analyzed
+MAX_TS_ROWS = 20_000            # rows scanned for time-series analysis
+MAX_TS_LAG = 24                 # ACF lags computed per series
+MAX_TS_ROWS = 20_000            # rows scanned for time-series analysis
+MIN_TS_POINTS = 30              # a series shorter than this is not analyzed
 
 
 # ---------------------------------------------------------------------------
@@ -248,6 +254,10 @@ def _classify_column(name: str, raw: list, stats: dict, rows: int) -> tuple:
         return "numeric", "continuous measure"
     # categorical-ish
     if distinct is not None and non_missing:
+        # datetime check FIRST: timestamps are near-unique by nature and would
+        # otherwise be misclassified as identifiers
+        if _looks_datetime(raw):
+            return "datetime", "values parse as timestamps"
         if distinct / non_missing > 0.9 and non_missing > 20:
             return "identifier", ("near-unique labels "
                                    f"({distinct}/{non_missing})")
@@ -258,8 +268,6 @@ def _classify_column(name: str, raw: list, stats: dict, rows: int) -> tuple:
                                  "needs NLP, not frequency charts")
         if (missing / n) > 0.6:
             return "sparse", f"{round(100*missing/n)}% missing"
-        if _looks_datetime(raw):
-            return "datetime", "values parse as timestamps"
         if distinct == 2:
             return "binary", "two distinct values"
         if distinct <= 20:
@@ -283,6 +291,204 @@ def _mean_shift_notable(groups: list[dict], std: float) -> bool:
     if len(means) < 2:
         return False
     return (max(means) - min(means)) > 0.3 * std
+
+
+# ---------------------------------------------------------------------------
+# Time-series intelligence (doc 13 roadmap: time-series specialized analytics)
+# ---------------------------------------------------------------------------
+
+
+def _parse_ts(raw: list) -> list:
+    """Parse a datetime column into epoch-seconds floats (None if unparseable).
+
+    Accepts the same ISO-ish shapes the profiler's _DATE_RE recognizes, plus
+    unix timestamps (numeric seconds). Deterministic: identical input always
+    yields identical output.
+    """
+    out: list[Optional[float]] = []
+    import datetime as _dt
+    for v in raw:
+        if v is None:
+            out.append(None)
+            continue
+        s = str(v).strip()
+        if not s:
+            out.append(None)
+            continue
+        m = _DATE_RE.match(s)
+        if m:
+            try:
+                if "T" in s or " " in s:
+                    fmt = "%Y-%m-%dT%H:%M:%S" if "T" in s else "%Y-%m-%d %H:%M:%S"
+                    dt = _dt.datetime.strptime(s, fmt)
+                elif s.count("-") == 2:
+                    dt = _dt.datetime.strptime(s, "%Y-%m-%d")
+                else:
+                    dt = _dt.datetime.strptime(s, "%Y-%m")
+                out.append(dt.timestamp())
+                continue
+            except ValueError:
+                out.append(None)
+                continue
+        try:
+            f = float(s)
+            out.append(f if not (math.isnan(f) or math.isinf(f)) else None)
+        except ValueError:
+            out.append(None)
+    return out
+
+
+def _acf(xs: list[float], max_lag: int = MAX_TS_LAG) -> list[float]:
+    """Autocorrelation function of a (finite, clean) series via exact means.
+
+    acf[k] = Pearson r between the series and itself lagged by k. Series
+    shorter than 2*(k+1) yields 0.0 for that lag.
+    """
+    n = len(xs)
+    if n < 3:
+        return [0.0] * (max_lag + 1)
+    mean = sum(xs) / n
+    var = sum((x - mean) ** 2 for x in xs) / n
+    out = [1.0]
+    if var <= 0:
+        return [1.0] + [0.0] * max_lag
+    for k in range(1, max_lag + 1):
+        if n <= k + 2:
+            out.append(0.0)
+            continue
+        cov = sum((xs[i] - mean) * (xs[i + k] - mean)
+                  for i in range(n - k)) / (n - k)
+        out.append(max(-1.0, min(1.0, cov / var)))
+    return out
+
+
+def _linear_trend(ts: list[float], ys: list[float]) -> dict:
+    """Least-squares slope of ys against epoch-seconds ts (normalized).
+
+    Returns {slope_per_day, r} where r is the trend-fit correlation strength
+    (|r| near 1 = strong monotonic trend). ts must align with ys.
+    """
+    n = len(ys)
+    if n < 3 or n != len(ts):
+        return {"slope_per_day": 0.0, "r": 0.0}
+    t0 = ts[0]
+    if ts[-1] == t0:
+        return {"slope_per_day": 0.0, "r": 0.0}
+    span_days = (ts[-1] - t0) / 86400.0
+    xn = [(t - t0) / 86400.0 for t in ts]  # x in days
+    r = _pearson(xn, ys)
+    mx = sum(xn) / n
+    my = sum(ys) / n
+    sxy = sum((x - mx) * (y - my) for x, y in zip(xn, ys))
+    sxx = sum((x - mx) ** 2 for x in xn)
+    slope = sxy / sxx if sxx > 0 else 0.0
+    return {"slope_per_day": round(slope, 6), "r": round(r, 3),
+            "span_days": round(span_days, 2)}
+
+
+def _seasonality_strength(ys: list[float], period: int) -> float:
+    """Fraction of variance explained by a seasonal mean profile.
+
+    Uses detrended means per phase (index mod period). ~0 for a flat/white
+    series; near 1 when phase means dominate. Deterministic.
+    """
+    n = len(ys)
+    if period < 2 or n < 2 * period:
+        return 0.0
+    mean = sum(ys) / n
+    buckets: list[list[float]] = [[] for _ in range(period)]
+    for i, v in enumerate(ys):
+        buckets[i % period].append(v)
+    phase_means = []
+    for b in buckets:
+        if b:
+            phase_means.append(sum(b) / len(b))
+        else:
+            phase_means.append(mean)
+    var_total = sum((v - mean) ** 2 for v in ys) / n
+    if var_total <= 0:
+        return 0.0
+    var_resid = 0.0
+    for i, v in enumerate(ys):
+        var_resid += (v - phase_means[i % period]) ** 2
+    var_resid /= n
+    return round(max(0.0, 1.0 - var_resid / var_total), 3)
+
+
+def _dominant_lag(acf_vals: list[float], min_lag: int = 2,
+                  threshold: float = 0.3) -> Optional[int]:
+    """First lag >= min_lag whose ACF clears threshold. None otherwise."""
+    for k in range(max(min_lag, 1), len(acf_vals)):
+        if acf_vals[k] >= threshold:
+            return k
+    return None
+
+
+def _timeseries_analysis(columns: dict, roles: dict,
+                         max_rows: int = MAX_TS_ROWS) -> Optional[dict]:
+    """Detect a datetime index, then analyze trend/seasonality per numeric col.
+
+    Returns None when no datetime column exists or the aligned series is too
+    short — the GUI section is omitted entirely in that case.
+    """
+    dt_cols = [n for n, info in roles.items()
+               if info.get("role") == "datetime" and n in columns]
+    if not dt_cols:
+        return None
+    index_col = dt_cols[0]
+    ts_all = _parse_ts(columns[index_col][:max_rows])
+    parsed = [(i, t) for i, t in enumerate(ts_all) if t is not None]
+    if len(parsed) < MIN_TS_POINTS:
+        return None
+
+    series_out: dict[str, dict] = {}
+    for name, raw in columns.items():
+        if name == index_col:
+            continue
+        vals = [_to_float_or_none(v) for v in raw[:max_rows]]
+        aligned = []
+        aligned_ts = []
+        for i, t in parsed:
+            if i < len(vals) and vals[i] is not None:
+                aligned_ts.append(t)
+                aligned.append(vals[i])
+        if len(aligned) < MIN_TS_POINTS:
+            continue
+        clean = aligned
+        acf_vals = _acf(clean)
+        dom = _dominant_lag(acf_vals)
+        trend = _linear_trend(aligned_ts, clean)
+        # pick the seasonal period: scan candidate periods 2..MAX_TS_LAG and
+        # keep the one explaining the most variance (deterministic; first
+        # maximum wins). Common cycles (7 = weekly) are one lag off the raw
+        # ACF peak, so a period scan beats trusting the dominant lag alone.
+        period = None
+        best_strength = 0.0
+        for p in range(2, MAX_TS_LAG + 1):
+            if len(clean) < 2 * p:
+                break
+            s = _seasonality_strength(clean, p)
+            if s > best_strength + 1e-9:
+                best_strength = s
+                period = p
+        seas = best_strength if best_strength >= 0.2 else 0.0
+        if seas == 0.0:
+            period = None
+        entry = {
+            "n": len(clean),
+            "trend": trend,
+            "acf": [round(a, 3) for a in acf_vals],
+            "dominant_lag": dom,
+            "seasonality": {"period": period, "strength": seas},
+        }
+        # only keep series that show *some* temporal structure
+        if (abs(trend["r"]) >= 0.3) or seas >= 0.2 or dom is not None:
+            series_out[name] = entry
+
+    if not series_out:
+        return None
+    return {"index_column": index_col, "n_series": len(series_out),
+            "series": series_out}
 
 
 def _build_plan(roles: dict, column_stats: dict, corr_columns: list,
@@ -476,7 +682,8 @@ def build_report(source: str, target: Optional[str] = None,
         sem_val = getattr(sem, "value", sem)  # enum -> str
         sem_str = str(sem_val)
         if ("categorical" in sem_str or "boolean" in sem_str
-                or "text" in sem_str or "identifier" in sem_str):
+                or "text" in sem_str or "identifier" in sem_str
+                or "datetime" in sem_str):
             categorical[name] = raw
         else:
             numeric[name] = [_to_float_or_none(v) for v in raw]
@@ -647,6 +854,32 @@ def build_report(source: str, target: Optional[str] = None,
         column_stats, corr_columns, matrix, target_balance,
         missing_map, plan, ridgeline)
 
+    # ---- time-series intelligence (trend / seasonality / ACF) ---------------
+    timeseries = _timeseries_analysis(columns, roles, max_rows)
+    if timeseries:
+        for name, ts_entry in timeseries["series"].items():
+            tr = ts_entry["trend"]
+            if abs(tr.get("r", 0.0)) >= 0.5 and abs(tr.get("slope_per_day", 0.0)) > 0:
+                direction = "upward" if tr["slope_per_day"] > 0 else "downward"
+                insights.append({
+                    "severity": "info",
+                    "text": f"`{name}` shows a {direction} trend over "
+                            f"`{timeseries['index_column']}` "
+                            f"({tr['slope_per_day']:+.3g}/day, "
+                            f"r={tr['r']:.2f}) — consider time-aware splits "
+                            "rather than random CV."})
+            seas = ts_entry.get("seasonality", {})
+            if seas.get("strength", 0.0) >= 0.3 and seas.get("period"):
+                insights.append({
+                    "severity": "info",
+                    "text": f"`{name}` is seasonal with period "
+                            f"~{seas['period']} "
+                            f"({round(100 * seas['strength'])}% of variance) "
+                            "— add seasonal features (doc 05 temporal "
+                            "operators)."})
+        insights.sort(key=lambda i: 0 if i["severity"] == "warning" else 1)
+        insights = insights[:12]
+
     return {
         "source_id": adapter.source_id(),
         "fingerprint": profile.dataset_fingerprint,
@@ -658,6 +891,7 @@ def build_report(source: str, target: Optional[str] = None,
         "target_balance": target_balance,
         "scatter_pairs": scatter_pairs,
         "ridgeline": ridgeline,
+        "timeseries": timeseries,
         "chart_plan": {"roles": roles, **plan},
         "insights": insights,
     }
