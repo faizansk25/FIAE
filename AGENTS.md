@@ -51,5 +51,6 @@ python examples/churn/run_api.py
 
 ## Checkpoint
 
-- Last verified green: `3ac2d75` (M22: time-series layer + release readiness,
-  860 passed / 3 skipped, ruff clean, pushed to `origin/main`)
+- Last verified green: `6f72ded` (CI fixed + release workflow added; all 12
+  CI jobs green on GitHub, 860 passed / 3 skipped, ruff clean, pushed to
+  `origin/main`)

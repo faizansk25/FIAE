@@ -1,9 +1,16 @@
 name: Release
 
 # Tag-triggered release: build → verify → publish.
-# Every wheel is installed into a clean venv and validated (import path,
-# full test suite, example smoke) BEFORE anything touches PyPI.
-# Publishing uses PyPI trusted publishing (OIDC) — no tokens stored.
+#
+# The wheel compiles Cython extensions (setup.py), so it is PLATFORM-SPECIFIC:
+# each OS builds its own wheel in the `build` matrix, verifies it in a clean
+# venv (import path + full suite + example smoke), and only then does
+# `publish` upload every wheel plus the sdist to PyPI — via trusted
+# publishing (OIDC), no stored tokens.
+#
+# Verify jobs set FIAE_TEST_INSTALLED=1 so the repo-root conftest.py does not
+# prepend src/ to sys.path (which would shadow the installed wheel and make
+# the verification meaningless).
 
 on:
   push:
@@ -15,22 +22,46 @@ permissions:
 
 jobs:
   build:
-    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
-      - name: Install build tool
+      - name: Install build tools
         run: pip install build twine
-      - name: Build sdist and wheel
-        run: python -m build
+      - name: Build wheel
+        run: python -m build --wheel --outdir dist/
       - name: Check distribution metadata
         run: twine check dist/*
       - uses: actions/upload-artifact@v4
         with:
-          name: dist
-          path: dist/
+          name: wheel-${{ matrix.os }}
+          path: dist/*.whl
+          if-no-files-found: error
+
+  build-sdist:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install build tools
+        run: pip install build twine
+      - name: Build sdist
+        run: python -m build --sdist --outdir dist/
+      - name: Check distribution metadata
+        run: twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: sdist
+          path: dist/*.tar.gz
+          if-no-files-found: error
 
   verify:
     needs: build
@@ -41,15 +72,17 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-python@v5
+      - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
       - uses: actions/download-artifact@v4
         with:
-          name: dist
+          name: wheel-${{ matrix.os }}
           path: dist/
-      - name: Install wheel into clean venv and verify
+      - name: Install wheel + test deps into clean venv and verify
         shell: bash
+        env:
+          FIAE_TEST_INSTALLED: "1"
         run: |
           if [ "$RUNNER_OS" = "Windows" ]; then
             PYBIN="verify-venv/Scripts/python"
@@ -58,21 +91,23 @@ jobs:
           fi
           python -m venv verify-venv
           "$PYBIN" -m pip install --upgrade pip
-          "$PYBIN" -m pip install dist/*.whl
-          "$PYBIN" -c "import fiae, sys; assert 'site-packages' in fiae.__file__, fiae.__file__; print('import OK:', fiae.__file__)"
+          "$PYBIN" -m pip install dist/*.whl pytest "numpy" "scikit-learn" "joblib" "polars" "pandas"
+          # Import must resolve to site-packages, not the source tree.
+          "$PYBIN" -c "import fiae; assert 'site-packages' in fiae.__file__, fiae.__file__; print('import OK:', fiae.__file__)"
           "$PYBIN" -m pytest tests/
           "$PYBIN" examples/churn/run_api.py
 
   publish:
-    needs: verify
+    needs: [verify, build-sdist]
     runs-on: ubuntu-latest
     environment: pypi
     permissions:
       id-token: write  # PyPI trusted publishing (OIDC)
     steps:
-      - uses: actions/download-artifact@v4
+      - name: Download all distributions
+        uses: actions/download-artifact@v4
         with:
-          name: dist
           path: dist/
+          merge-multiple: true
       - name: Publish to PyPI
         uses: pypa/gh-action-pypi-publish@v1.14.2

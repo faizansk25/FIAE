@@ -697,7 +697,7 @@ Every push and pull request runs [.github/workflows/ci.yml](.github/workflows/ci
 | **test** | Full suite **plus an end-to-end example smoke**, on a 3 OS × 3 Python matrix (Ubuntu/Windows/macOS × 3.10/3.11/3.12), with JUnit reports and per-matrix summaries |
 | **coverage** | Suite run under `pytest-cov`; `coverage.xml` published as a run artifact |
 
-Tests run against the source tree (the core is stdlib-only; no Cython build in CI). Packaging is exercised by the [release workflow](.github/workflows/release.yml) on tags: every wheel is **verified before publishing** — installed into a clean environment, import-path-checked (`site-packages`), full suite + example smoke run against the installed package, and only then pushed to PyPI. The CI commands also run locally:
+Tests run against the source tree (the core is stdlib-only; no Cython build in CI). Packaging is exercised by the [release workflow](.github/workflows/release.yml) on tags: platform wheels (Cython-compiled) are built on 3 OSes, **each verified before publishing** — installed into a clean environment, import-path-checked (`site-packages`), full suite + example smoke run against the installed package, and only then pushed to PyPI via trusted publishing. The CI commands also run locally:
 
 ```bash
 ruff check src/fiae tests
@@ -730,7 +730,7 @@ python examples/churn/run_api.py
 | **CLI** | `test_cli.py` | ~20 | All CLI commands, JSON output |
 | **Security** | `test_security*.py` | 15 | Resource limits, input validation, audit logging |
 | **Misc** | `test_m*.py` | 200+ | Milestone integration tests (M3–M13) |
-| **Total** | **35 files** | **852** | |
+| **Total** | **35 files** | **860** | |
 
 ---
 
@@ -780,7 +780,7 @@ fiae/
 │   ├── search/                 # Feature search
 │   ├── security/               # Security
 │   └── testing/                # Testing
-├── tests/                      # Test suite (693 tests)
+├── tests/                      # Test suite (860 tests)
 ├── pyproject.toml              # Build config & dependencies
 ├── conftest.py                 # Test infrastructure
 ├── README.md                   # This file
