@@ -8,13 +8,11 @@
 
 **Automated feature engineering with safety-first design, experience memory, and verified pipeline export.**
 
-[![CI](https://github.com/your-org/fiae/actions/workflows/ci.yml/badge.svg)](https://github.com/your-org/fiae/actions/workflows/ci.yml)
+[![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-852%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-860%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-EA4AAA.svg?style=flat&logo=githubsponsors)](https://github.com/sponsors/fiae)
-[![Ko-fi](https://img.shields.io/badge/Donate-Ko--fi-FF5E5B.svg?style=flat&logo=ko-fi)](https://ko-fi.com/fiae)
 
 ---
 
@@ -225,8 +223,8 @@ fiae learn data.csv --target is_returned
 ### From source (recommended)
 
 ```bash
-git clone https://github.com/your-org/fiae.git
-cd fiae
+git clone https://github.com/faizansk25/FIAE.git
+cd FIAE
 pip install -e ".[dev]"
 ```
 
@@ -700,6 +698,15 @@ python -m pytest tests/
 python examples/churn/run_api.py
 ```
 
+### End-to-end example
+
+`examples/churn/run_api.py` runs the canonical 10-phase pipeline on a
+generated synthetic churn dataset (no downloads, no credentials, CPU-only):
+
+```bash
+python examples/churn/run_api.py
+```
+
 ---
 
 ## Testing
@@ -799,7 +806,7 @@ fiae/
 - [x] Bounded-concurrency REST server: worker pool, 429 backpressure,
       per-client rate limiting, load-tested with 200 simultaneous clients
 - [x] `fiae connect` universal source connector
-- [x] 789 passing tests
+- [x] 860 passing tests
 - [x] Real-data validation on 20-type 100K-row dataset
 
 ### Planned
@@ -837,7 +844,7 @@ If you use FIAE in your research, please cite:
 @software{fiae2026,
   title  = {FIAE: Feature Intelligence \& Architecture Engine},
   year   = {2026},
-  url    = {https://github.com/your-org/fiae},
+  url    = {https://github.com/faizansk25/FIAE},
   note   = {Automated feature engineering with safety-first design}
 }
 ```

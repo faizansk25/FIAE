@@ -1552,3 +1552,74 @@ carries signal, and narrate the findings.
 | src/fiae/report.py | _classify_column, _build_plan, _gather_insights, _skewness, _mean_shift_notable, _looks_datetime |
 | src/fiae/webgui.py | Insights/Excluded panels, why badges, plan-driven renderReport |
 | tests/test_webgui.py | TestAnalystLayer - 8 tests |
+
+---
+
+## M22 - Time-Series Intelligence Layer (Trend, Seasonality, ACF)
+
+**Status: COMPLETE - 860 passed, 3 skipped** (+8 net new tests), full suite green.
+
+### What Was Built
+
+The report engine now understands time: when a dataset carries a datetime
+column, numeric series are aligned to it and analyzed for temporal structure
+(all pure stdlib, NFR-002, deterministic).
+
+**Backend (src/fiae/report.py):**
+- `_parse_ts` — datetime column -> epoch seconds (ISO `YYYY-MM-DD[THH:MM:SS]`,
+  `YYYY-MM`, and unix timestamps; None for unparseable)
+- `_acf` — exact autocorrelation function, lags 0..24
+- `_linear_trend` — least-squares slope per day + trend-fit r against the
+  time index
+- `_seasonality_strength` — fraction of variance explained by the phase-mean
+  profile at a candidate period (index mod period)
+- `_dominant_lag` — first ACF lag clearing 0.3
+- `_timeseries_analysis` — orchestrates: first datetime column becomes the
+  index; every numeric column aligned to it is analyzed; only series with
+  real temporal structure (|trend r| >= 0.3, or seasonality strength >= 0.2,
+  or a dominant ACF lag) are kept. Returns None when no datetime column or
+  all series are too short (< 30 aligned points) — the GUI section is
+  omitted entirely in that case.
+- **Seasonal period selection**: scans candidate periods 2..24 and keeps the
+  variance-maximizing one (first maximum wins, deterministic). Needed because
+  weekly cycles peak at ACF lag 6/8 (the ±sin symmetry), not 7.
+- **2 analyst-layer bugs fixed:**
+  1. `_classify_column` checked near-unique cardinality *before* the datetime
+     test, so timestamp columns (near-unique by nature) were misclassified as
+     identifiers. Datetime detection now runs first.
+  2. `build_report` routed semantic-datetime columns into the numeric branch,
+     where `_to_float_or_none` turned every value into None -> the profiler
+     said DATETIME but the analyst layer said "column has no values". Datetime
+     semantic columns now keep raw values (categorical branch).
+- **2 new insights**: strong trend -> "consider time-aware splits rather than
+  random CV"; seasonality >= 30% -> "add seasonal features (doc 05 temporal
+  operators)" with the detected period.
+
+**GUI (webgui.py) — new Report section "Time Series — Trend & Seasonality":**
+- `svgTrend` — per-series trend thumbnail (slope/day, r, span)
+- `svgACF` — autocorrelation stem plot with significance-tinted stems, the
+  detected period highlighted in gold
+- Section only renders when `timeseries` is present (plan-driven, like all
+  M21 sections)
+
+### Verification
+
+- 9 new tests (`TestTimeSeriesLayer`): unit helpers (ACF on ramp/alternating/
+  sine, dominant lag, seasonality bounds), trend slope/direction/flat,
+  end-to-end detection on a 120-day CSV, absence without datetime, absence
+  when series < 30 points, trend insight text, seasonality insight + strength,
+  GUI renderer presence. Full suite: **860 passed, 3 skipped** (baseline 852
+  + 9 new - 1 removed duplicate count). Zero regressions across all 48 files.
+- Live verification with a 180-day synthetic dataset (trend + weekly cycle +
+  weekly harmonics): revenue trend +1.99/day detected, visitors flagged as
+  seasonal period 7 at 100% strength, insights advise time-aware splits and
+  seasonal features. Dataset removed after verification.
+
+### Files Changed
+
+| File | Change |
+|---|---|
+| src/fiae/report.py | time-series engine (5 new functions + orchestrator), period scan, datetime classification fixes, trend/seasonality insights |
+| src/fiae/webgui.py | Time Series panel + svgTrend + svgACF renderers |
+| tests/test_webgui.py | TestTimeSeriesLayer - 9 tests |
+| md/PROGRESS_REPORT.md | this entry |

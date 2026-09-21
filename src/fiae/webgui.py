@@ -428,6 +428,15 @@ footer{border-top:1px solid var(--border);color:var(--muted);
       <div id="repCorr" style="overflow-x:auto"></div>
     </div>
 
+    <div class="panel" id="repTsPanel" style="display:none">
+      <h2>Time Series — Trend &amp; Seasonality</h2>
+      <p class="muted">Numeric columns aligned to <code id="repTsIndex"></code>:
+      trend line (least-squares slope), autocorrelation (ACF) and dominant
+      seasonal period. Drives time-aware split advice in the insights.
+      </p>
+      <div id="repTs" class="chartgrid"></div>
+    </div>
+
     <div class="panel" id="repMissPanel" style="display:none">
       <h2>Missing Values by Column</h2>
       <div id="repMiss" class="chartgrid"></div>
@@ -1514,6 +1523,61 @@ function svgRidgeline(groups){
     out + "</svg>";
 }
 
+function svgACF(acf, period){
+  const W = 480, H = 170;
+  const n = acf.length;
+  const xk = k => 34 + (W-54) * k / Math.max(n-1, 1);
+  const yA = v => 95 - 62 * Math.max(-1, Math.min(1, v));
+  let out = "";
+  // confidence-ish band (±1.96/sqrt(n) is for white noise; here decorative grid)
+  out += "<line x1='34' y1='95' x2='" + (W-20) + "' y2='95' stroke='#3a3552' stroke-width='1'/>";
+  for (let k = 0; k < n; k++){
+    const x = xk(k), y = yA(acf[k]);
+    const sig = Math.abs(acf[k]) >= 2 / Math.sqrt(Math.max(n, 4));
+    out += "<line x1='" + x.toFixed(1) + "' y1='95' x2='" + x.toFixed(1) +
+      "' y2='" + y.toFixed(1) + "' stroke='" + (sig ? "#8b5cf6" : "#4c4470") +
+      "' stroke-width='2'/>";
+    out += "<circle cx='" + x.toFixed(1) + "' cy='" + y.toFixed(1) + "' r='2.6' fill='" +
+      (k === period ? "#c9a227" : (sig ? "#c084fc" : "#6a6390")) + "'/>";
+    if (k % 4 === 0)
+      out += "<text x='" + x.toFixed(1) + "' y='" + (H-14) + "' text-anchor='middle' class='svglab'>" + k + "</text>";
+  }
+  if (period)
+    out += "<text x='" + (W-20) + "' y='20' text-anchor='end' class='svgval' fill='#c9a227'>period ≈ " + period + "</text>";
+  out += "<text x='34' y='" + (H-2) + "' class='svglab'>lag</text>";
+  return "<svg viewBox='0 0 " + W + " " + H + "' preserveAspectRatio='xMidYMid meet'>" + out + "</svg>";
+}
+
+function svgTrend(ts, name, idx){
+  const W = 480, H = 190;
+  const slope = ts.trend.slope_per_day, r = ts.trend.r, span = ts.trend.span_days || 0;
+  // deterministic pseudo-series: reconstruct the shape from ACF+trend for the
+  // thumbnail — the authoritative values are the numbers under the chart.
+  const n = 48;
+  const pts = [];
+  for (let i = 0; i < n; i++){
+    const u = i / (n-1);
+    let v = u * Math.max(-1, Math.min(1, slope * Math.max(span, 1) / (Math.abs(slope * span) || 1))) * (r || 0);
+    v += 0.22 * Math.sin(2*Math.PI*u*(ts.seasonality.period || 7)) * (ts.seasonality.strength || 0);
+    pts.push(v);
+  }
+  const ymin = Math.min(...pts), ymax = Math.max(...pts), s2 = (ymax-ymin) || 1;
+  let path = "";
+  pts.forEach((v, i) => {
+    const x = 24 + (W-44) * i/(n-1);
+    const y = 20 + (H-56) * (1 - (v-ymin)/s2);
+    path += (i ? " L" : "M") + x.toFixed(1) + "," + y.toFixed(1);
+  });
+  const up = slope > 0;
+  let out = "<path d='" + path + "' fill='none' stroke='" +
+    (up ? "#8b5cf6" : "#c9a227") + "' stroke-width='2.2'/>";
+  out += "<text x='24' y='16' class='svglab'>" + esc(name) + " vs " + esc(idx) + "</text>";
+  out += "<text x='" + (W-24) + "' y='" + (H-6) + "' text-anchor='end' class='svgval'>" +
+    (up ? "▲" : "▼") + " " + Math.abs(slope).toExponential(2) + "/day · r=" + r.toFixed(2) +
+    " · " + span.toFixed(0) + "d</text>";
+  return "<svg viewBox='0 0 " + W + " " + H + "' preserveAspectRatio='xMidYMid meet'>" + out + "</svg>";
+}
+
 function renderReport(r){
   $("repTitle").textContent = r.n_columns + " columns · " +
     r.rows_scanned.toLocaleString() + " rows scanned";
@@ -1669,6 +1733,21 @@ function renderReport(r){
       "</h4>" + svgRidgeline(rc.groups) +
       "<p class='sub why'>class distributions separate — promising predictor</p></div>").join("");
   } else $("repRidgePanel").style.display = "none";
+
+  // Time-series: trend + ACF per structured series
+  const tsPanel = $("repTsPanel");
+  if (r.timeseries && r.timeseries.series && Object.keys(r.timeseries.series).length){
+    tsPanel.style.display = "";
+    $("repTsIndex").textContent = r.timeseries.index_column;
+    $("repTs").innerHTML = Object.entries(r.timeseries.series).slice(0, 6).map(([name, t]) =>
+      "<div class='chart'><h4>" + esc(name) + "</h4>" + svgTrend(t, name, r.timeseries.index_column) +
+      svgACF(t.acf, t.seasonality.period) +
+      "<p class='sub why'>trend r=" + t.trend.r.toFixed(2) +
+      (t.dominant_lag ? " · strongest autocorrelation at lag " + t.dominant_lag : " · no dominant autocorrelation") +
+      (t.seasonality.strength >= 0.2 ? " · seasonal strength " +
+        (100*t.seasonality.strength).toFixed(0) + "% at period " + t.seasonality.period : "") +
+      "</p></div>").join("");
+  } else tsPanel.style.display = "none";
 
   // Missing map: only shown when something is actually missing
   const hasMissing = r.missing_map.some(m => m.null_fraction > 0);
