@@ -51,8 +51,9 @@ python examples/churn/run_api.py
 
 ## Checkpoint
 
-- Last verified green: M23 audit & hardening program (956 passed / 3
-  skipped, ruff clean; claims-as-assertions, architecture boundary tests,
-  Hypothesis property tests, leakage scenarios, experience-store isolation,
-  fuzz suite, benchmarks — 10 engine bugs found & fixed, all documented in
-  `md/AUDIT.md` and `md/PROGRESS_REPORT.md` M23 entry)
+- Last verified green: M23 audit & hardening + M24 phase-2 gap closure
+  (983 passed, ruff clean; claims-as-assertions, architecture boundary
+  tests, Hypothesis property tests, leakage scenarios, experience-store
+  isolation, fuzz suite incl. SSRF & JSON-depth guards, benchmarks,
+  export/runtime equivalence, artifact-hash lineage — documented in
+  `md/AUDIT.md` and `md/PROGRESS_REPORT.md`)

@@ -232,6 +232,10 @@ class JsonAdapter(BaseAdapter):
     def estimate_bytes(self) -> Optional[int]:
         return self._size
 
+    # Recursion/zip-bomb guard: JSON nested deeper than this is rejected
+    # rather than crashing with a raw RecursionError mid-scan.
+    MAX_JSON_DEPTH = 64
+
     def scan(
         self,
         projection: Optional[list[str]] = None,
@@ -239,7 +243,13 @@ class JsonAdapter(BaseAdapter):
     ) -> Iterator[RowBatch]:
         """Read JSON array of objects."""
         with open(self._path, "r", encoding="utf-8") as f:
-            data = json.load(f)
+            try:
+                data = json.load(f)
+            except RecursionError as err:
+                raise ValueError(
+                    f"JSON file exceeds maximum nesting depth "
+                    f"({self.MAX_JSON_DEPTH}); refusing to parse."
+                ) from err
 
         if not isinstance(data, list):
             data = [data]
@@ -320,6 +330,9 @@ class NdjsonAdapter(BaseAdapter):
                 try:
                     obj = json.loads(line)
                 except json.JSONDecodeError:
+                    continue
+                except RecursionError:
+                    # Hostile over-nested line: skip it, keep scanning.
                     continue
                 if not isinstance(obj, dict):
                     continue

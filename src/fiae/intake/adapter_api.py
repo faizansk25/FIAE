@@ -22,12 +22,72 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import ipaddress
 import json
 from typing import Any, Iterator, Optional
+from urllib.parse import urlparse
 
 from .adapter_base import BaseAdapter
 from .base import RowBatch
 from ..errors import ErrorCode, FIAEError
+
+# Hostnames that must never be fetched: loopback, link-local, and the
+# cloud metadata endpoint (SSRF guard, doc 11).
+_FORBIDDEN_HOSTS = frozenset({
+    "localhost", "localhost.localdomain", "ip6-localhost", "metadata",
+    "metadata.google.internal", "instance-data",
+})
+
+
+def _assert_public_url(url: str) -> None:
+    """Reject URLs pointing at loopback/private/metadata targets.
+
+    Data-source URLs are untrusted input (they may come from config files
+    or user-supplied connection strings); fetching them blindly would let
+    an attacker pivot into internal services (SSRF, doc 11).
+    """
+    parsed = urlparse(url)
+    scheme = (parsed.scheme or "").lower()
+    if scheme not in ("http", "https"):
+        raise FIAEError(
+            code=ErrorCode.DATA_FORMAT_ERROR,
+            safe_message="API source URL must use http or https.",
+            component="adapter_api",
+            evidence={"scheme": scheme or "missing"},
+        )
+    host = (parsed.hostname or "").lower()
+    if not host:
+        raise FIAEError(
+            code=ErrorCode.DATA_FORMAT_ERROR,
+            safe_message="API source URL has no host.",
+            component="adapter_api",
+            evidence={},
+        )
+    if host in _FORBIDDEN_HOSTS:
+        raise FIAEError(
+            code=ErrorCode.DATA_FORMAT_ERROR,
+            safe_message="API source URL points at a forbidden host.",
+            component="adapter_api",
+            evidence={"host": host},
+        )
+    try:
+        addr = ipaddress.ip_address(host)
+    except ValueError:
+        return  # regular DNS name, not an IP literal
+    if (
+        addr.is_loopback
+        or addr.is_private
+        or addr.is_link_local
+        or addr.is_reserved
+        or addr.is_multicast
+        or addr.is_unspecified
+    ):
+        raise FIAEError(
+            code=ErrorCode.DATA_FORMAT_ERROR,
+            safe_message="API source URL points at a private/reserved address.",
+            component="adapter_api",
+            evidence={"host": host},
+        )
 
 
 class ApiAdapter(BaseAdapter):
@@ -76,6 +136,7 @@ class ApiAdapter(BaseAdapter):
         batch_rows: int = 2048,
     ) -> None:
         super().__init__("api", url=url)
+        _assert_public_url(url)
         self._url = url
         self._method = method
         self._headers = headers or {}

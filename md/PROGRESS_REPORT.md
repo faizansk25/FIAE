@@ -1743,3 +1743,48 @@ store, fuzz the intake layer, and benchmark with memory evidence.
 | README.md | connector claim, operator family table, test count badges |
 | md/AUDIT.md | new — full audit findings document |
 | pyproject.toml | hypothesis in dev extra |
+
+---
+
+## M24 - Phase-2 Hardening: Mission-Gap Closure
+
+**Date:** 2026-09-27
+**Objective:** Close the remaining mission gaps after the M23 audit sweep:
+export/runtime equivalence as a property, schema preservation, Parquet and
+URL-ingestion fuzz coverage, SSRF protection, and artifact-hash lineage.
+
+### What Was Done
+
+**Export/runtime equivalence** (`tests/test_phase2_hardening.py`)
+- End-to-end: proposals -> IR -> generated `apply_pipeline` code executed
+  and compared elementwise against the fitted runtime (sqrt/log1p/product).
+- Missing inputs surface as None in the export (never silent zeros).
+- Self-containment proven by executing the export with `import fiae`
+  blocked at the `builtins.__import__` level.
+
+**Schema preservation** — row count preserved through sqrt/standardize/
+one_hot with nulls present; column set stable between fit and transform.
+
+**Parquet fuzzing** — truncated (magic-only) and random-garbage .parquet
+files rejected by Arrow with clear errors; valid files parse; factory
+rejects nonexistent parquet with FIAEError.
+
+**SSRF guard** (`src/fiae/intake/adapter_api.py`) — `_assert_public_url`
+runs at adapter construction: rejects loopback/private/link-local/reserved/
+multicast/unspecified IPs, `[::1]`, cloud metadata hosts (169.254.169.254,
+metadata.google.internal), localhost aliases, and non-HTTP schemes. Public
+URLs unaffected.
+
+**JSON over-nesting guard** (`src/fiae/intake/adapter_file.py`) —
+over-nested JSON documents raise a clear ValueError instead of a raw
+RecursionError; NDJSON skips hostile lines and keeps scanning.
+
+**Artifact-hash lineage** (`src/fiae/learn.py`,
+`src/fiae/experiment/tracking.py`) — the portfolio lineage JSON now writes
+a `.sha256` sidecar; `log_artifact` records the SHA-256 of every attached
+artifact in the audit trail, making artifact integrity verifiable.
+
+### Verification
+
+- Full suite: **983 passed** (956 → +27 hardening tests), 0 failures.
+- `ruff check src/fiae tests examples conftest.py benchmarks tools`: clean.

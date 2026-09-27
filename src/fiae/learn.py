@@ -544,6 +544,8 @@ def _pipeline_artifact(report) -> str:
     out_dir = "runs"
     os.makedirs(out_dir, exist_ok=True)
     path = os.path.join(out_dir, f"portfolio_{time.strftime('%Y%m%d_%H%M%S')}.json")
+    import hashlib
+
     lineage = {
         "dataset_fingerprint": getattr(report, "dataset_fingerprint", None),
         "split_fingerprint": getattr(report, "split_fingerprint", None),
@@ -557,4 +559,10 @@ def _pipeline_artifact(report) -> str:
     }
     with open(path, "w", encoding="utf-8") as f:
         _json.dump(lineage, f, indent=2, default=str)
+    # Content-addressed artifact hash: consumers can verify the lineage
+    # file was not altered after the run (doc 13 artifact integrity).
+    with open(path, "rb") as f:
+        digest = hashlib.sha256(f.read()).hexdigest()
+    with open(path + ".sha256", "w", encoding="utf-8") as f:
+        f.write(digest + "\n")
     return path

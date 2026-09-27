@@ -102,11 +102,23 @@ class ExperimentTracker:
                 pass  # tracking must never crash the pipeline
 
     def log_artifact(self, path: str) -> None:
-        """Attach a file artifact (report, model, exported code)."""
+        """Attach a file artifact (report, model, exported code).
+
+        The SHA-256 content hash is recorded in the run log so artifact
+        integrity is verifiable after the fact (doc 13).
+        """
         if not self._active or not os.path.exists(path):
             return
+        artifact_hash = ""
+        try:
+            import hashlib
+
+            with open(path, "rb") as f:
+                artifact_hash = hashlib.sha256(f.read()).hexdigest()
+        except OSError:
+            pass
         self._log_audit("pipeline", "artifact", os.path.basename(path),
-                        {"path": path})
+                        {"path": path, "sha256": artifact_hash})
         if self._client is not None:
             try:
                 if self.config.backend == "mlflow":
