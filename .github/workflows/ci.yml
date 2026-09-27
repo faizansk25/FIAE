@@ -18,6 +18,8 @@ jobs:
       - uses: actions/setup-python@v7
         with:
           python-version: "3.12"
+      - name: Install PyYAML for lint script
+        run: python -m pip install pyyaml
       - name: Strict-parse every workflow YAML
         run: |
           python - <<'EOF'
