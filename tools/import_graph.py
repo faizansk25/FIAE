@@ -44,7 +44,7 @@ def collect():
                             parts = parts[:-1]  # module -> its package
                         if node.level > 1:
                             parts = parts[: len(parts) - (node.level - 1)]
-                        full = ".".join(["fiae"] + parts + node.module.split("."))
+                        full = ".".join(["fiae", *parts, *node.module.split(".")])
                     else:
                         full = node.module
                     if full == "fiae":
@@ -67,7 +67,6 @@ def main():
 
     # Package-level view: a module imports a package if it imports any
     # submodule of it or the package __init__.
-    mods = set(loc)
     pkg_edges = set()
     for src, dst in edges:
         dst_pkg = dst.split(".")[0] if dst else ""
