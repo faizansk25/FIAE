@@ -148,11 +148,19 @@ class CaseRecord:
         )
 
     def identity_hash(self) -> str:
-        """Deterministic identity for deduplication (doc 06)."""
+        """Deterministic identity for deduplication (doc 06).
+
+        Includes ``engine_commit`` and ``schema_fingerprint``: a record
+        produced by a different engine version or schema is a *different*
+        record -- it must not silently overwrite the older one when written
+        (record versioning, doc 06/13).
+        """
         from ..ids import content_hash
 
         material = {
             "dataset_fingerprint": self.dataset_fingerprint,
+            "schema_fingerprint": self.schema_fingerprint,
+            "engine_commit": self.engine_commit,
             "split_fingerprint": self.split_fingerprint,
             "feature_graph_hash": self.action.feature_graph_hash,
             "model_family": self.action.model_family,

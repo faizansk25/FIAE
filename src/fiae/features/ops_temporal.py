@@ -255,7 +255,8 @@ def tf_time_since_first(values: list, **_):
 # --------------------------------------------------------------------------
 # registrations
 # --------------------------------------------------------------------------
-def _temporal(name, purpose, tf, trigger, rejects, tests):
+def _temporal(name, purpose, tf, trigger, rejects, tests,
+              null_policy="preserve"):
     register(
         FeatureOperator(
             name=name,
@@ -269,7 +270,7 @@ def _temporal(name, purpose, tf, trigger, rejects, tests):
                 "group isolation enforced by caller",
             ),
             fit_scope=FitScope.NONE,
-            null_policy="preserve",
+            null_policy=null_policy,
             leakage_class=LeakageClass.L0,
             target_permission=TargetPermission.P0_NONE,
             cost_shape="O(n * window)",
@@ -310,10 +311,18 @@ _rolls = {
     "rolling_count": ("backward window non-null count", tf_rolling_count),
 }
 for _name, (_purpose, _tf) in _rolls.items():
-    _temporal(_name, _purpose, _tf,
-              "rolling history available",
-              ("window > series length", "insufficient data"),
-              ("no-future", "window boundary null"))
+    if _name == "rolling_count":
+        # always-defined counter of non-nulls; not null-preserving
+        _temporal(_name, _purpose, _tf,
+                  "rolling history available",
+                  ("window > series length", "insufficient data"),
+                  ("no-future", "window boundary null"),
+                  null_policy="always_defined")
+    else:
+        _temporal(_name, _purpose, _tf,
+                  "rolling history available",
+                  ("window > series length", "insufficient data"),
+                  ("no-future", "window boundary null"))
 
 _temporal("rolling_unique", "distinct count in backward window",
           tf_rolling_unique, "behavior diversity",
@@ -322,11 +331,13 @@ _temporal("rolling_unique", "distinct count in backward window",
 _temporal("expanding_mean", "long-term historical mean",
           tf_expanding_mean, "long-term baseline",
           ("tiny data",),
-          ("insert-after-emit",))
+          ("insert-after-emit",),
+          null_policy="forward_carry")
 _temporal("ewma", "recency-weighted moving average",
           tf_ewma, "recent history important",
           ("alpha search too broad",),
-          ("online equals batch",))
+          ("online equals batch",),
+          null_policy="forward_carry")
 _temporal("time_since_previous", "inter-event gap in numeric units",
           tf_time_since_previous, "event cadence",
           ("duplicate time ambiguous",),

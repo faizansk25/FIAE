@@ -65,7 +65,7 @@ def validate_input_code(code: str, policy: Optional[SandboxPolicy] = None) -> li
 
         # Check for eval/exec calls
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
-                and node.func.id in ("eval", "exec", "compile"):
+                and node.func.id in ("eval", "exec", "compile", "__import__", "open"):
             warnings.append(f"Call to forbidden function: {node.func.id}")
 
         # Check for attribute access on forbidden modules
@@ -170,8 +170,11 @@ def validate_column_name(name: str) -> list[str]:
         warnings.append("Empty column name")
     if len(name) > 256:
         warnings.append(f"Column name too long: {len(name)} chars")
-    # Check for injection patterns
-    dangerous = [";", "--", "/*", "*/", "UNION", "DROP", "DELETE"]
+    # Check for injection patterns (SQL + code execution)
+    dangerous = [
+        ";", "--", "/*", "*/", "UNION", "DROP", "DELETE",
+        "__import__", "eval(", "exec(", "`", "${",
+    ]
     for pattern in dangerous:
         if pattern.lower() in name.lower():
             warnings.append(f"Potentially dangerous pattern in column name: {pattern}")

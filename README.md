@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-860%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-956%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -102,7 +102,7 @@ Run it yourself in under a minute: `python examples/churn/run_api.py` (no creden
 | **Deterministic content-hash IDs** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Core: zero third-party deps** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **95 typed operators** | ✅ | ~50 | ~30 | ~20 | — | — |
-| **25+ data source connectors** (files, URLs, cloud, SQL, warehouses, APIs) | ✅ | ⚠️ | ❌ | ⚠️ | ❌ | ❌ |
+| **12 data adapters covering 25+ sources** (13 file extensions + 16 URI schemes: files, URLs, cloud, SQL, warehouses, APIs) | ✅ | ⚠️ | ❌ | ⚠️ | ❌ | ❌ |
 | **Progress indicators with ETA** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 **FIAE does not try to be the fastest or the most feature-rich. It is the safest and most principled.**
@@ -366,7 +366,7 @@ fiae codegen             # Code generation & operator tests
 
 ### `fiae connect` — Universal Source Connector
 
-One command for all 25+ supported sources: auto-detects the adapter, verifies
+One command for all 25+ supported sources (12 auto-detected adapters): auto-detects the adapter, verifies
 the connection, and profiles a sample — so you know a source works before
 running a pipeline on it.
 
@@ -596,20 +596,19 @@ FIAE exports pipelines with fit/transform lifecycle:
 
 | Family | Count | Examples |
 |---|---|---|
-| **Numeric** | 12 | log1p, sqrt, square, reciprocal, zscore, minmax |
-| **Categorical** | 10 | onehot, label, frequency, target_encoding, ordinal |
-| **Datetime** | 8 | year, month, day, hour, weekday, is_weekend |
-| **Text** | 10 | length, word_count, char_count, uppercase_count |
-| **Group** | 8 | group_mean, group_sum, group_count, group_std |
-| **Temporal** | 7 | lag, rolling_mean, rolling_std, expanding_mean |
-| **Model-Informed** | 8 | pca, svd, kmeans, cluster_distance |
-| **Interactions** | 6 | multiply, divide, add, subtract |
-| **Binning** | 5 | uniform, quantile, kmeans_binning |
-| **Missing** | 4 | is_missing, missing_count, missing_rate |
-| **Rolling** | 5 | rolling_min, rolling_max, rolling_median |
-| **Cumulative** | 4 | cumsum, cummax, cummin, cumcount |
-| **String** | 6 | contains, startswith, endswith, regex_match |
-| **Custom** | 2 | custom_transform, custom_aggregation |
+| **Numeric** | 20 | abs, log1p, zscore, minmax, exp_clip, finite_indicator |
+| **Temporal** | 15 | lag, lead, diff, ewma, rolling_mean, expanding_mean |
+| **Datetime** | 14 | year, month, day_of_week, cyclical_month, is_weekend |
+| **Numeric Interaction** | 12 | multiply, divide, absolute_difference, euclidean_norm_pair |
+| **Group Aggregate** | 8 | group_mean, group_sum, group_count, group_std |
+| **Categorical** | 7 | one_hot, ordinal_encode, frequency_encode, hash_encode |
+| **Text** | 6 | text_length_chars, text_digit_ratio, text_punctuation_ratio |
+| **Dimensionality** | 3 | pca, truncated_svd, text_svd |
+| **Target-Aware Categorical** | 3 | target_mean_crossfit, woe_crossfit, numeric_to_cat_target |
+| **Cluster** | 2 | kmeans_distances, kmeans_label |
+| **Model-Informed** | 2 | tree_leaf_oof, residual_interaction_proposal |
+| **Text Representation** | 2 | tfidf_word, tfidf_char |
+| **Categorical Interaction** | 1 | category_cross |
 
 ---
 
@@ -730,7 +729,8 @@ python examples/churn/run_api.py
 | **CLI** | `test_cli.py` | ~20 | All CLI commands, JSON output |
 | **Security** | `test_security*.py` | 15 | Resource limits, input validation, audit logging |
 | **Misc** | `test_m*.py` | 200+ | Milestone integration tests (M3–M13) |
-| **Total** | **35 files** | **860** | |
+| **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | 110+ | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
+| **Total** | **42 files** | **956** | |
 
 ---
 
@@ -780,7 +780,7 @@ fiae/
 │   ├── search/                 # Feature search
 │   ├── security/               # Security
 │   └── testing/                # Testing
-├── tests/                      # Test suite (860 tests)
+├── tests/                      # Test suite (956 tests)
 ├── pyproject.toml              # Build config & dependencies
 ├── conftest.py                 # Test infrastructure
 ├── README.md                   # This file
@@ -813,7 +813,7 @@ fiae/
 - [x] Bounded-concurrency REST server: worker pool, 429 backpressure,
       per-client rate limiting, load-tested with 200 simultaneous clients
 - [x] `fiae connect` universal source connector
-- [x] 860 passing tests
+- [x] 956 passing tests, incl. property-based & adversarial suites
 - [x] Real-data validation on 20-type 100K-row dataset
 
 ### Planned

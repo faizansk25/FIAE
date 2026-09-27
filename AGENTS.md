@@ -51,6 +51,8 @@ python examples/churn/run_api.py
 
 ## Checkpoint
 
-- Last verified green: `6f72ded` (CI fixed + release workflow added; all 12
-  CI jobs green on GitHub, 860 passed / 3 skipped, ruff clean, pushed to
-  `origin/main`)
+- Last verified green: M23 audit & hardening program (956 passed / 3
+  skipped, ruff clean; claims-as-assertions, architecture boundary tests,
+  Hypothesis property tests, leakage scenarios, experience-store isolation,
+  fuzz suite, benchmarks — 10 engine bugs found & fixed, all documented in
+  `md/AUDIT.md` and `md/PROGRESS_REPORT.md` M23 entry)

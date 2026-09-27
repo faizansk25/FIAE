@@ -164,15 +164,20 @@ def detect_deterministic(
             )
 
     # 3) Deterministic bijection (identifier-like memorization). Only
-    # near-unique feature values (distinct ratio ~1, e.g. row numbers/IDs)
+    # near-unique STRING features (distinct ratio ~1, e.g. row numbers/IDs)
     # constitute Stage A proof. A low-cardinality categorical that maps
     # deterministically to the target is statistical suspicion handled by
     # Stage B (REVIEW_REQUIRED), never an automatic Stage A rejection.
+    # Continuous numeric values are excluded: a float feature with many
+    # distinct values is near-unique by construction, not by identity
+    # semantics -- flagging it would hard-reject clean numeric data.
     distinct_ratio = len(f_set) / len(pairs)
+    has_raw_string = any(isinstance(f, str) for f in feature_values if f is not None)
+    looks_like_identifier = distinct_ratio >= 0.9 and has_raw_string
     target_by_f: dict[str, set[str]] = {}
     for nf, nt in pairs:
         target_by_f.setdefault(nf, set()).add(nt)
-    if distinct_ratio >= 0.9 and all(len(v) == 1 for v in target_by_f.values()):
+    if looks_like_identifier and all(len(v) == 1 for v in target_by_f.values()):
         return _finding(
             "deterministic_bijection",
             feature_name,
@@ -245,14 +250,22 @@ def statistical_triage(
                 action="review",
             )
 
-    # b) Extreme mutual information on categorical features.
+    # b) Extreme mutual information on categorical features. Skipped for
+    # identifier-like features (distinct values ~ row count): MI is
+    # degenerate there (each value appears once, MI trivially maximal)
+    # and would raise suspicion on every continuous numeric column.
     pairs = []
     for f, t in zip(feature_values, target_values):
         nf, nt = _norm(f), _norm(t)
         if nf is None or nt is None:
             continue
         pairs.append((nf, nt))
-    if pairs and len({nf for nf, _ in pairs}) <= 200:
+    n_distinct_f = len({nf for nf, _ in pairs})
+    if (
+        pairs
+        and n_distinct_f <= 200
+        and n_distinct_f < len(pairs) * 0.5
+    ):
         counts: dict[tuple[str, str], int] = {}
         fx: dict[str, int] = {}
         ty: dict[str, int] = {}

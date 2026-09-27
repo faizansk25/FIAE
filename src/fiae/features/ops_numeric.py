@@ -43,8 +43,8 @@ def tf_log1p(values: list, **_: Any) -> list:
     out: list[Optional[float]] = []
     for v in values:
         x = _f(v)
-        # x >= -1 domain; below is invalid -> explicit missing
-        out.append(math.log1p(x) if x is not None and x >= -1.0 else None)
+        # x > -1 domain (log1p(-1) -> -inf is not finite); outside -> missing
+        out.append(math.log1p(x) if x is not None and x > -1.0 else None)
     return out
 
 

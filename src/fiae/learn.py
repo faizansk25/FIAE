@@ -4,6 +4,9 @@ from __future__ import annotations
 
 import dataclasses
 import math
+import os
+import subprocess
+import sys
 import time
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Optional
@@ -18,6 +21,28 @@ from .problem.task import infer_task, route_metrics
 from .search.records import FeatureAcceptanceRecord, StageVerdict
 from .search.triggers import FeatureProposal, build_candidates
 from .search.hints import build_hint_candidates
+
+_ENGINE_COMMIT: str = ""
+
+
+def _engine_commit() -> str:
+    """Best-effort git commit of the running checkout ("dev" when unknown)."""
+    global _ENGINE_COMMIT
+    if _ENGINE_COMMIT:
+        return _ENGINE_COMMIT
+    value = os.environ.get("FIAE_ENGINE_COMMIT", "")
+    if not value:
+        try:
+            out = subprocess.run(
+                ["git", "rev-parse", "--short", "HEAD"],  # noqa: S607
+                capture_output=True, text=True, timeout=5,
+            )
+            if out.returncode == 0 and out.stdout.strip():
+                value = out.stdout.strip()
+        except Exception:
+            pass
+    _ENGINE_COMMIT = value or "dev"
+    return _ENGINE_COMMIT
 
 if TYPE_CHECKING:
     from .experiment.tracking import TrackingConfig
@@ -213,6 +238,8 @@ class LearnReport:
     funnel_results: list = field(default_factory=list)
     portfolio_size: int = 0
     portfolio: list = field(default_factory=list)
+    split_fingerprint: str = ""
+    engine_commit: str = ""
     total_time_s: float = 0.0
     # FeatureProposals backing the selected portfolio, in selection order.
     # Carries op/inputs/params so consumers (PipelineIR export) can rebuild
@@ -259,6 +286,11 @@ def learn(source, target, *, config=None):
             "scheduler": cfg.scheduler,
             "sample_rows": cfg.sample_rows,
             "seed": cfg.seed,
+            # Lineage (doc 12/13): code version + environment are part of
+            # every experiment record so runs are attributable and
+            # reproducible, regardless of the chosen backend.
+            "engine_commit": _engine_commit(),
+            "python_version": sys.version.split()[0],
         })
 
 
@@ -312,6 +344,8 @@ def learn(source, target, *, config=None):
     split_spec = make_splits(inference.task, n_rows,
                              y=y_all if inference.task != Task.UNSUPERVISED else None,
                              holdout_fraction=cfg.holdout_fraction, seed=cfg.seed)
+    report.split_fingerprint = split_spec.plan.split_fingerprint
+    report.engine_commit = _engine_commit()
 
     # Phase 4: Scan columns and detect types
     all_col_data = scan_columns(adapter, max_rows=cfg.sample_rows)
@@ -497,5 +531,30 @@ def learn(source, target, *, config=None):
                     metrics["best_feature_gain"] = max(
                         metrics["best_feature_gain"], gain)
         tracker.log_metrics(metrics)
+        tracker.log_artifact(_pipeline_artifact(report))
         tracker.finish()
     return report
+
+
+def _pipeline_artifact(report) -> str:
+    """Write the feature-portfolio lineage JSON for the current run and
+    return its path (dataset fingerprint, split, portfolio, hyperparams)."""
+    import json as _json
+
+    out_dir = "runs"
+    os.makedirs(out_dir, exist_ok=True)
+    path = os.path.join(out_dir, f"portfolio_{time.strftime('%Y%m%d_%H%M%S')}.json")
+    lineage = {
+        "dataset_fingerprint": getattr(report, "dataset_fingerprint", None),
+        "split_fingerprint": getattr(report, "split_fingerprint", None),
+        "engine_commit": getattr(report, "engine_commit", ""),
+        "portfolio": [dataclasses.asdict(p) for p in getattr(report, "portfolio", [])],
+        "portfolio_proposals": [
+            dataclasses.asdict(p) for p in getattr(report, "portfolio_proposals", [])
+        ],
+        "portfolio_size": getattr(report, "portfolio_size", 0),
+        "python_version": sys.version.split()[0],
+    }
+    with open(path, "w", encoding="utf-8") as f:
+        _json.dump(lineage, f, indent=2, default=str)
+    return path

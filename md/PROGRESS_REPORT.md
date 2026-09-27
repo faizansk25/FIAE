@@ -1623,3 +1623,123 @@ column, numeric series are aligned to it and analyzed for temporal structure
 | src/fiae/webgui.py | Time Series panel + svgTrend + svgACF renderers |
 | tests/test_webgui.py | TestTimeSeriesLayer - 9 tests |
 | md/PROGRESS_REPORT.md | this entry |
+
+---
+
+## M23 - Production Correctness Audit & Architecture Hardening
+
+**Date:** 2026-09-27
+**Objective:** Turn FIAE from "has more features" into "verifiably correct" —
+prove every marketing claim, enforce architecture boundaries, property-test
+the operators, adversarially test leakage detection, isolate the experience
+store, fuzz the intake layer, and benchmark with memory evidence.
+
+### What Was Done
+
+**M1 — Claims turned into assertions** (`tests/test_claims.py`, 22 tests)
+- 95 operators / 13 families verified against the registry (and the README
+  badge text itself is parsed and compared).
+- Zero-dependency core proven: every `fiae` module imports in a subprocess
+  with numpy/pandas/sklearn/polars/joblib/yaml/pyarrow blocked.
+- 11 export gates verified by name, incl. parity gates proven to *reject*
+  bad expectations (not pass trivially).
+- Determinism claim scoped honestly: content hashes are stable across
+  processes; run IDs are intentionally ephemeral (uuid4).
+- Connector claim corrected: **12 adapters covering 25+ sources** (13
+  extensions + 16 URI schemes) — the old "25+ connectors" wording was
+  inflated; the operator-family table in README listed 14 fabricated
+  families and was replaced with the registry-derived truth.
+- Security layer fixed: `__import__`, `open`, backtick, and `${` patterns
+  now flagged in code/column validation.
+
+**M2 — Architecture audit** (`md/AUDIT.md`, `tools/import_graph.py`,
+`tests/test_architecture.py`, `tests/test_api_stability.py`)
+- Full import graph extracted (incl. relative imports). **Zero circular
+  dependencies**; clean 4-layer structure with `contracts`/`ids` as the
+  domain core (39 modules import contracts).
+- Layering now enforced by tests: no low layer may import a higher one;
+  domain/ids purity; engine (features/intake) may not import orchestration.
+- Public API signatures pinned for semver compatibility; `CanonicalResult
+.summary()` keys are contractual.
+
+**M3 — Hypothesis property tests** (`tests/test_property_invariants.py`)
+- Determinism, no-row-reordering, finite→finite-or-none, null preservation,
+  identity idempotence over all unary stateless numeric operators; fit/
+  transform consistency; JSON state round-trip equality; train/test state
+  separation.
+- **Found real bug C-1**: `log1p(-1.0)` crashed (math domain error) — fixed.
+- **Found C-2**: three temporal ops declared `null_policy="preserve"` while
+  emitting values at null positions — declarations corrected.
+
+**M4 — Leakage scenario tests** (`tests/test_leakage_scenarios.py`, 21 tests)
+- Synthetic contaminated datasets per class: target copy (L5), noisy target
+  derivative (L4), post-outcome availability (L4/L5), entity-ID bijection
+  (L5), self-included aggregation (L2 via cross-fit), split contamination
+  (Stage D), future information (L3).
+- False-positive rates measured: Stage A 0/30 hard rejects on clean data,
+  Stage B ≤20% suspicion (by design, never proof).
+- **Found C-3**: bijection rule hard-rejected every continuous numeric
+  feature — fixed. **Found C-4**: MI rule flagged near-unique numerics —
+  fixed. **Found C-5**: real detectors were never wired into the runtime
+  (documented as follow-up).
+
+**M5 — Experience store isolation** (`tests/test_experience_isolation.py`, 14 tests)
+- Task isolation (R0): regression failures never contaminate binary priors.
+- Schema fingerprint separation; failed cases never scored as successes.
+- **Found C-6**: identity excluded engine version/schema → silent record
+  overwrites. Storage key is now the versioned identity hash; versions
+  coexist. **Found C-7**: one corrupt row crashed `all_cases()` → corrupt
+  rows skipped. **Found C-8**: forward-compat (unknown JSON keys) crashed
+  reads → unknown keys dropped.
+
+**M6 — Reliability & fuzzing** (`tests/test_reliability_fuzz.py`, 18 tests)
+- CSV fuzz: empty/header-only/ragged/binary/BOM/5MB-single-field.
+- **Found C-9**: >128KB field escaped as raw `_csv.Error` → bounded 1MB
+  limit, oversized fields malformed, scanning continues.
+- **Found C-10**: ragged CSVs lost to a degenerate tab parse → delimiters
+  that never occur in the data can no longer win dialect detection.
+- Hostile paths (traversal, null byte) rejected cleanly; SQL/URL/cloud
+  scheme routing verified; codegen injection fails closed (syntax gate
+  rejects hostile column names; benign tricky names still export).
+
+**M7 — Benchmarks** (`benchmarks/bench_core.py`)
+- 1K/100K(/1M) tiers × narrow/wide/missing-heavy/high-cardinality shapes;
+  tracemalloc peak memory per benchmark; full canonical pipeline tier.
+  Evidence base for future Polars/NumPy optimization decisions.
+
+**M8 — MLflow lineage decision**
+- Existing `ExperimentTracker` already backends MLflow/W&B/local behind one
+  interface; a second tracker would duplicate lineage. Instead the recorded
+  lineage was deepened: engine commit, python version, dataset fingerprint,
+  split fingerprint, portfolio + proposals, metrics, and a portfolio
+  lineage JSON artifact — captured for every backend.
+
+### Verification
+
+- Full suite: **956 passed, 3 skipped** (baseline 860 → +96 audit tests).
+- `ruff check src/fiae tests examples conftest.py`: clean.
+
+### Files Changed
+
+| File | Change |
+|---|---|
+| tests/test_claims.py | new — claims-as-assertions (22 tests) |
+| tests/test_architecture.py | new — layering/cycle/purity enforcement |
+| tests/test_api_stability.py | new — public API semver pins |
+| tests/test_property_invariants.py | new — Hypothesis properties |
+| tests/test_leakage_scenarios.py | new — per-class leakage + FP rates |
+| tests/test_experience_isolation.py | new — store isolation/versioning |
+| tests/test_reliability_fuzz.py | new — intake/codegen adversarial tests |
+| benchmarks/bench_core.py | new — size/shape/memory benchmarks |
+| tools/import_graph.py | new — architecture analysis tool |
+| src/fiae/security/sandbox.py | `__import__`/`open`/injection patterns |
+| src/fiae/features/ops_numeric.py | log1p domain guard fix (C-1) |
+| src/fiae/features/ops_temporal.py | null-policy declarations (C-2) |
+| src/fiae/problem/leakage.py | bijection + MI false-positive fixes (C-3/C-4) |
+| src/fiae/experience/store.py | versioned identity key, corrupt-row & forward-compat tolerance (C-6/C-7/C-8) |
+| src/fiae/experience/case.py | identity includes engine/schema versions (C-6) |
+| src/fiae/intake/csv_source.py | huge-row guard (C-9), dialect scoring fix (C-10) |
+| src/fiae/learn.py | lineage: engine commit, split fingerprint, portfolio artifact (M8) |
+| README.md | connector claim, operator family table, test count badges |
+| md/AUDIT.md | new — full audit findings document |
+| pyproject.toml | hypothesis in dev extra |

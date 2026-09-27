@@ -65,7 +65,18 @@ def detect_dialect(
             continue
         # Row-width stability is the confidence signal; a wider modal width is
         # a tiebreak so single-column files are not spuriously ambiguous.
+        # A multi-column candidate whose delimiter occurs in some rows but a
+        # degenerate 1-wide parse is perfectly stable (e.g. tab "parsing" a
+        # ragged comma CSV) must not outrank the delimiter that actually
+        # occurs in the data: it would mark every real row malformed.
+        occurs = any(any(delim in cell for cell in row) for row in rows)
         score = stability * 10.0 + (1.0 if modal > 1 else 0.0)
+        if modal == 1 and not occurs:
+            # Degenerate 1-wide parse where the delimiter never occurs
+            # (e.g. tab "parsing" a comma CSV): cap below any candidate
+            # whose delimiter actually occurs, so ragged multi-column
+            # files pick the real delimiter even at lower stability.
+            score = min(score, 6.5)
         if best is None or score > best["score"] + 1e-9:
             best = {
                 "delimiter": delim,
@@ -153,6 +164,10 @@ class CsvDataSourceAdapter:
             else:
                 raise
         self.delimiter = dialect["delimiter"]
+        # Huge-row DoS guard: raise the stdlib 128 KB field cap to a bounded
+        # 1 MB so a single gigantic field is malformed data, not a crash
+        # with a raw _csv.Error.
+        csv.field_size_limit(min(self.MAX_FIELD_BYTES, max(csv.field_size_limit(), self.MAX_FIELD_BYTES)))
         self._dialect_confidence = dialect["confidence"]
         self._modal_width = dialect["modal_width"]
         if has_header is not None:
@@ -230,6 +245,10 @@ class CsvDataSourceAdapter:
     def _parse_text(self, text: str) -> list[list[str]]:
         return [r for r in csv.reader(io.StringIO(text), delimiter=self.delimiter) if r]
 
+    # Single CSV field larger than this is treated as malformed rather than
+    # trusted (huge-row DoS guard; the stdlib default is 128 KB).
+    MAX_FIELD_BYTES = 1_048_576  # 1 MB
+
     def _iter_file_rows(self, offset: int, nbytes: Optional[int]) -> Iterator[list[str]]:
         """Yield parsed data rows from a file region; skip a partial leading line."""
         with open(self.path, "rb") as fh:
@@ -240,7 +259,18 @@ class CsvDataSourceAdapter:
         text = data.decode(self.encoding, errors="replace")
         width = self._modal_width
         skip_header = offset == 0 and self.has_header
-        for row in csv.reader(io.StringIO(text), delimiter=self.delimiter):
+        reader = csv.reader(io.StringIO(text), delimiter=self.delimiter)
+        while True:
+            try:
+                row = next(reader)
+            except StopIteration:
+                break
+            except csv.Error:
+                # Field larger than the limit (or otherwise unparseable):
+                # count as malformed and stop this region instead of raising
+                # a raw _csv.Error into the pipeline.
+                self.malformed_rows += 1
+                break
             self.parsed_rows += 1
             if len(row) != width:
                 self.malformed_rows += 1

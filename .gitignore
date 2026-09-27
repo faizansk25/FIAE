@@ -57,3 +57,4 @@ pytest_err.txt
 # -- Generated Cython C artifacts (built from .py at package time) --
 src/fiae/*.c
 src/fiae/**/*.c
+tools/import_graph.json
