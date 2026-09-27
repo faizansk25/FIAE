@@ -96,7 +96,7 @@ so any breaking change fails CI rather than surprising users.
 |----|---------|-----------|
 | C-3 | Stage A `deterministic_bijection` hard-rejected **every continuous numeric feature** (all floats distinct ⇒ trivial 1:1; the "is string" guard inspected normalized values, which are always str) | Guard now checks raw value types; false-positive rate on clean data verified 0/30 by `test_stage_a_never_rejects_clean_data` |
 | C-4 | Stage B `extreme_mutual_information` flagged every near-unique numeric column (degenerate MI=1.0) | MI branch skipped for identifier-like features (distinct ≈ row count) |
-| C-5 | The real Stage A/B detectors were never invoked by any runtime path (`fiae leakage` CLI/GUI use only distinct-ratio heuristics) | Documented as accepted risk W-6; wiring into `phase_validate` is the follow-up milestone |
+| C-5 | The real Stage A/B detectors were never invoked by any runtime path (`fiae leakage` CLI/GUI use only distinct-ratio heuristics) | **Fixed (M25)**: `phase_validate` now runs `detect_deterministic` + `statistical_triage` over sampled source columns; findings surface in `ValidationResult.leakage_flags` with class/severity/action/evidence — proven by `tests/test_phase_validate_leakage.py` (11 tests incl. clean-data false-positive guard) |
 
 ### Experience store hardening (M5)
 

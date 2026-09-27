@@ -210,6 +210,62 @@ def phase_validate(ctx: RunContext, intake: IntakeResult, target: str) -> Valida
     except Exception:
         pass
 
+    # Stage A/B detectors (doc 03): run the real deterministic and
+    # statistical leakage detectors over sampled source values so the
+    # canonical pipeline carries actual findings, not only the
+    # distinct-ratio heuristic above.
+    try:
+        from ..problem.leakage import detect_deterministic, statistical_triage
+        from ..intake.base import SamplePlan
+        if intake.profile is not None and target:
+            col_names = [c["name"] for c in intake.columns if c["name"] != target]
+            if col_names:
+                # Bound the scan: reuse the intake batch budget.
+                max_bytes = 33_554_432  # 32 MiB, matches ProfileConfig default
+                values: dict[str, list[Any]] = {c: [] for c in col_names}
+                target_values: list[Any] = []
+                from ..intake import CsvDataSourceAdapter
+                source = ctx.config_snapshot.get("source", "")
+                if isinstance(source, str) and source:
+                    adapter = CsvDataSourceAdapter(source)
+                    for batch in adapter.sample(SamplePlan(
+                        block_bytes=262_144, max_total_bytes=max_bytes,
+                        random_seed=0,
+                    )):
+                        cols = batch.columns
+                        if target not in cols:
+                            continue
+                        for c in col_names:
+                            if c in cols:
+                                values[c].extend(cols[c])
+                        target_values.extend(cols[target])
+                if target_values:
+                    for c in col_names:
+                        fv = values.get(c, [])
+                        det = detect_deterministic(fv, target_values, feature_name=c, target_name=target)
+                        if det is not None:
+                            result.leakage_flags.append({
+                                "column": c,
+                                "type": det.finding_id,
+                                "leakage_class": getattr(det.type, "value", str(det.type)),
+                                "severity": getattr(det.severity, "value", str(det.severity)),
+                                "action": det.action,
+                                "evidence": det.evidence,
+                            })
+                            continue
+                        stat = statistical_triage(fv, target_values, feature_name=c, target_name=target)
+                        if stat is not None:
+                            result.leakage_flags.append({
+                                "column": c,
+                                "type": stat.finding_id,
+                                "leakage_class": getattr(stat.type, "value", str(stat.type)),
+                                "severity": getattr(stat.severity, "value", str(stat.severity)),
+                                "action": stat.action,
+                                "evidence": stat.evidence,
+                            })
+    except Exception:
+        pass
+
     return result
 
 

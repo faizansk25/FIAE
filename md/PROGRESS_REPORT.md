@@ -1788,3 +1788,42 @@ artifact in the audit trail, making artifact integrity verifiable.
 
 - Full suite: **983 passed** (956 → +27 hardening tests), 0 failures.
 - `ruff check src/fiae tests examples conftest.py benchmarks tools`: clean.
+
+---
+
+## M25 - C-5 Fix: Real Leakage Detectors Wired Into the Canonical Pipeline
+
+**Date:** 2026-09-27
+**Objective:** Close finding C-5 from the M23 audit: the Stage A
+(deterministic) and Stage B (statistical suspicion) detectors in
+`problem/leakage.py` existed and were tested directly, but no runtime path
+ever invoked them — the canonical pipeline's validation phase relied only on
+the distinct-ratio identifier heuristic.
+
+### What Was Done
+
+**`src/fiae/pipeline/canonical.py` (`phase_validate`)**
+- After the existing heuristic, samples source columns via the intake
+  adapter (bounded to the 32 MiB profile budget, seed 0 for determinism).
+- Runs `detect_deterministic` (Stage A) then `statistical_triage` (Stage B)
+  per feature column against the target column.
+- Findings are appended to `ValidationResult.leakage_flags` as dicts carrying
+  `column`, `type` (finding id `L|kind|subject`), `leakage_class`
+  (L3–L5), `severity`, `action`, and `evidence`.
+- The legacy `potential_identifier` heuristic is unchanged and still runs.
+
+**`tests/test_phase_validate_leakage.py`** (11 new tests)
+- Stage A fires through the pipeline: exact target copy, inverted copy,
+  boolean-renamed copy, target embedded in string, identifier bijection —
+  each hard-rejected with correct finding id and action.
+- Stage B fires through the pipeline: near-perfect single-feature AUC and
+  missingness-determines-target, both REVIEW_REQUIRED (never hard reject).
+- False-positive guard: a clean dataset with noisy, weakly-signal features
+  produces zero Stage A/B findings.
+- Structure: every finding carries the complete field set.
+- Compat: the legacy heuristic flag still appears alongside detector output.
+
+### Verification
+
+- Full suite: **994 passed** (983 → +11), 0 failures.
+- `ruff check src/fiae tests examples conftest.py benchmarks tools`: clean.
