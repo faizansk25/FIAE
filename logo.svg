@@ -1,82 +1,57 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 560" width="100%" height="100%" role="img" aria-label="FIAE Logo">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 540" role="img" aria-label="FIAE logo">
+  <!-- The FIAE matrix wordmark, generated cell-for-cell from
+       src/fiae/identity.py _LETTERS (the CLI banner), with the brand
+       purple ramp #C084FC -> #6D28D9 applied per column exactly like
+       the ANSI-256 gradient in banner(). Row runs are merged so the
+       blocks are seamless, like the terminal banner. -->
   <defs>
     <style>
-      /* Environment-adaptive color: light ink by default, light gray in
-         dark mode via the media query below. */
-      :root {
-        --fia-color: #1a1a1a;
-        --fia-accent: #6d28d9;
-      }
-      @media (prefers-color-scheme: dark) {
-        :root {
-          --fia-color: #e5e7eb;
-          --fia-accent: #c084fc;
-        }
-      }
-      .fia-stroke { stroke: var(--fia-color); fill: none; }
-      .fia-fill { fill: var(--fia-color); stroke: none; }
-      .fia-accent { stroke: var(--fia-accent); fill: none; }
-      .fia-accent-fill { fill: var(--fia-accent); stroke: none; }
-      .alpha-50 { opacity: 0.50; }
-      .alpha-80 { opacity: 0.80; }
-      .text-logo {
-        font-family: ui-monospace, "JetBrains Mono", Consolas, SFMono-Regular, monospace;
-        font-weight: 800;
-        font-size: 110px;
-        letter-spacing: 28px;
-      }
+      /* Environment-adaptive tagline: dark ink in light mode, light gray in dark. */
+      :root { --fia-text: #4c1d95; }
+      @media (prefers-color-scheme: dark) { :root { --fia-text: #c4b5fd; } }
+      .fia-text { fill: var(--fia-text); }
       .text-sub {
-        font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-        font-weight: 600;
-        font-size: 19px;
-        letter-spacing: 5px;
+        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+        font-weight: 600; font-size: 27px; letter-spacing: 6px;
         text-transform: uppercase;
       }
       .text-cli {
-        font-family: ui-monospace, "JetBrains Mono", Consolas, SFMono-Regular, monospace;
-        font-weight: 500;
-        font-size: 15px;
+        font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
+        font-weight: 500; font-size: 20px;
       }
+      .dim { opacity: 0.55; }
     </style>
   </defs>
 
-  <!-- THE FEATURE DAG (stylized "F": stem = pipeline spine, arms = feature
-       branches feeding the funnel apex) -->
-  <g transform="translate(0, -20)" stroke-width="12" stroke-linecap="round" stroke-linejoin="round" class="fia-stroke">
-    <!-- Spine: intake -> development -> deployment -->
-    <path d="M 250 120 L 250 400" />
-    <!-- Top arm: feature generation branches -->
-    <path d="M 250 140 L 520 140" />
-    <!-- Lower arm: selection/pruning branches -->
-    <path d="M 250 260 L 440 260" />
-    <!-- Fallback engine paths (degradation ledger) -->
-    <path d="M 265 165 L 470 165" stroke-width="6" class="alpha-50" />
-    <path d="M 265 285 L 400 285" stroke-width="6" class="alpha-50" />
+    <rect x="30" y="30" width="300" height="60" fill="#b87cf9"/>
+    <rect x="390" y="30" width="300" height="60" fill="#a263ef"/>
+    <rect x="810" y="30" width="180" height="60" fill="#8b49e6"/>
+    <rect x="1110" y="30" width="300" height="60" fill="#7530dc"/>
+    <rect x="30" y="90" width="60" height="60" fill="#c084fc"/>
+    <rect x="390" y="90" width="120" height="60" fill="#a769f2"/>
+    <rect x="750" y="90" width="60" height="60" fill="#9352e9"/>
+    <rect x="990" y="90" width="60" height="60" fill="#8441e3"/>
+    <rect x="1110" y="90" width="60" height="60" fill="#7c39df"/>
+    <rect x="30" y="150" width="300" height="60" fill="#b87cf9"/>
+    <rect x="390" y="150" width="120" height="60" fill="#a769f2"/>
+    <rect x="750" y="150" width="300" height="60" fill="#8b49e6"/>
+    <rect x="1110" y="150" width="300" height="60" fill="#7530dc"/>
+    <rect x="30" y="210" width="60" height="60" fill="#c084fc"/>
+    <rect x="390" y="210" width="120" height="60" fill="#a769f2"/>
+    <rect x="750" y="210" width="60" height="60" fill="#9352e9"/>
+    <rect x="990" y="210" width="60" height="60" fill="#8441e3"/>
+    <rect x="1110" y="210" width="60" height="60" fill="#7c39df"/>
+    <rect x="30" y="270" width="60" height="60" fill="#c084fc"/>
+    <rect x="390" y="270" width="120" height="60" fill="#a769f2"/>
+    <rect x="750" y="270" width="60" height="60" fill="#9352e9"/>
+    <rect x="990" y="270" width="60" height="60" fill="#8441e3"/>
+    <rect x="1110" y="270" width="300" height="60" fill="#7530dc"/>
+    <rect x="30" y="330" width="60" height="60" fill="#c084fc"/>
+    <rect x="390" y="330" width="300" height="60" fill="#a263ef"/>
+    <rect x="750" y="330" width="60" height="60" fill="#9352e9"/>
+    <rect x="990" y="330" width="60" height="60" fill="#8441e3"/>
+    <rect x="1110" y="330" width="60" height="60" fill="#7c39df"/>
 
-    <!-- Crossbar: orchestration & calibration layer -->
-    <path d="M 210 330 L 560 330" class="fia-accent" />
-    <path d="M 190 365 L 580 365" stroke-width="4" stroke-dasharray="8 12" class="fia-accent alpha-80" />
-
-    <!-- Apex node: the planner -->
-    <circle cx="250" cy="120" r="26" stroke-width="8" />
-    <circle cx="250" cy="120" r="10" class="fia-fill" />
-
-    <!-- Mid nodes: cost model + gate layer -->
-    <rect x="504" y="124" width="32" height="32" rx="8" stroke-width="6" />
-    <rect x="424" y="244" width="32" height="32" rx="8" stroke-width="6" />
-
-    <!-- Bottom left node: data source (PostgreSQL-style cylinder) -->
-    <ellipse cx="230" cy="430" rx="32" ry="14" stroke-width="6" />
-    <path d="M 198 430 L 198 455 A 32 14 0 0 0 262 455 L 262 430" stroke-width="6" />
-    <path d="M 198 443 L 198 468 A 32 14 0 0 0 262 468 L 262 443" stroke-width="6" class="alpha-50" />
-
-    <!-- Bottom right node: engine execution (hexagon, Python/Arrow) -->
-    <polygon points="570,410 598,427 598,461 570,478 542,461 542,427" stroke-width="6" />
-    <path d="M 556 444 L 584 444 M 570 430 L 570 458" stroke-width="4" class="fia-accent alpha-80" />
-  </g>
-
-  <!-- Typography -->
-  <text x="400" y="465" text-anchor="middle" class="fia-fill text-logo">FIAE</text>
-  <text x="400" y="500" text-anchor="middle" class="fia-fill text-sub alpha-80">Feature Intelligence &amp; Architecture Engine</text>
-  <text x="400" y="540" text-anchor="middle" class="fia-fill text-cli alpha-50">&gt; pip install fiae &amp;&amp; fiae analyze data.csv --target y</text>
+  <text x="720" y="452" text-anchor="middle" class="fia-text text-sub">Feature Intelligence &amp; Architecture Engine</text>
+  <text x="720" y="490" text-anchor="middle" class="fia-text text-cli dim">&gt; pip install fiae</text>
 </svg>
