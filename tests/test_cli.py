@@ -65,3 +65,26 @@ def test_analyze_constant_target_invalid(tmp_path, capsys):
     assert rc == 2
     err = json.loads(capsys.readouterr().out)["error"]
     assert err["code"] == "TARGET_INVALID"
+
+
+def test_inspect_ndjson_does_not_crash(tmp_path, capsys):
+    """Regression: NdjsonAdapter must satisfy the dialect_report contract.
+
+    `fiae inspect` calls adapter.dialect_report() directly; adapters for
+    self-describing formats inherit the BaseAdapter default report.
+    """
+    p = tmp_path / "s.ndjson"
+    with open(p, "w", encoding="utf-8") as f:
+        for i in range(20):
+            f.write(json.dumps({"a": i, "b": i * 0.5}) + "\n")
+    assert main(["inspect", str(p), "--json"]) == 0
+    payload = json.loads(capsys.readouterr().out)
+    assert payload["dialect"]["delimiter"] is None
+    assert payload["profile"]["columns"]
+
+
+def test_inspect_json_error_hint_free_for_valid_source(csv_file, capsys):
+    """Successful JSON inspect must not emit CLI tip lines."""
+    assert main(["inspect", str(csv_file), "--json"]) == 0
+    out = capsys.readouterr().out
+    assert "tip:" not in out

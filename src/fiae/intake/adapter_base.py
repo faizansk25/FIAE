@@ -44,6 +44,23 @@ class BaseAdapter:
         """Optional schema hint (None for self-describing formats)."""
         return None
 
+    def dialect_report(self) -> dict[str, Any]:
+        """How the source was parsed (delimiter, confidence, ...).
+
+        Default: minimal report for self-describing formats (JSON, Parquet,
+        Excel, ...) that have no text dialect to detect. CSV overrides this
+        with real detection results.
+        """
+        return {
+            "encoding": "utf-8",
+            "delimiter": None,
+            "has_header": True,
+            "header_confidence": 1.0,
+            "dialect_confidence": 1.0,
+            "malformed_fraction": 0.0,
+            "note": "self-describing format; no text dialect detection",
+        }
+
     def estimate_rows(self) -> Optional[int]:
         """Estimate total row count. None if unknown."""
         return None
