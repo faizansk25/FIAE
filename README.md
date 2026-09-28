@@ -1,6 +1,6 @@
 <div align="center">
 
-<img src="assets/fiae-logo.png" alt="FIAE" width="414"/>
+<img src="logo.svg" alt="FIAE" width="460"/>
 
 # FIAE
 
@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-994%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1000%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -227,7 +227,21 @@ fiae learn data.csv --target is_returned
 
 ## Installation
 
-### From source (recommended)
+### From PyPI (recommended)
+
+```bash
+pip install fiae
+
+# With ML capabilities (scikit-learn, polars, ...)
+pip install "fiae[tier1]"
+
+# Full stack
+tier2 extras are also available: pip install "fiae[tier1,tier2]"
+```
+
+Works everywhere Python runs — terminals, Colab, Jupyter/JupyterLab, VS Code, PyCharm, CI, Docker. The core engine has **zero third-party dependencies** (stdlib only); the wheel installs even without a C compiler (Cython acceleration is an optional optimization, auto-skipped when no toolchain is present).
+
+### From source
 
 ```bash
 git clone https://github.com/faizansk25/FIAE.git
@@ -384,7 +398,7 @@ fiae connect --list                         # show all supported sources
 Example output:
 
 ```
-fiae 0.0.1 -- Feature Intelligence & Architecture Engine
+fiae 0.1.0 -- Feature Intelligence & Architecture Engine
 ==========================================================
 Connecting to postgresql://u:p@host/db
 
@@ -730,7 +744,7 @@ python examples/churn/run_api.py
 | **Security** | `test_security*.py` | 15 | Resource limits, input validation, audit logging |
 | **Misc** | `test_m*.py` | 200+ | Milestone integration tests (M3–M13) |
 | **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | 110+ | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
-| **Total** | **44 files** | **994** | |
+| **Total** | **45 files** | **1000** | |
 
 ---
 
@@ -738,8 +752,7 @@ python examples/churn/run_api.py
 
 ```
 fiae/
-├── assets/                     # Brand assets
-│   └── fiae-logo.png           # FIAE logo
+├── logo.svg                    # Adaptive brand logo (light/dark)
 ├── md/                         # 16 design documents (00–15) + navigation
 ├── src/fiae/                   # Source package
 │   ├── __init__.py             # Package init
@@ -780,7 +793,7 @@ fiae/
 │   ├── search/                 # Feature search
 │   ├── security/               # Security
 │   └── testing/                # Testing
-├── tests/                      # Test suite (994 tests)
+├── tests/                      # Test suite (1000 tests)
 ├── pyproject.toml              # Build config & dependencies
 ├── conftest.py                 # Test infrastructure
 ├── README.md                   # This file
@@ -813,7 +826,7 @@ fiae/
 - [x] Bounded-concurrency REST server: worker pool, 429 backpressure,
       per-client rate limiting, load-tested with 200 simultaneous clients
 - [x] `fiae connect` universal source connector
-- [x] 994 passing tests, incl. property-based & adversarial suites
+- [x] 1000 passing tests, incl. property-based & adversarial suites
 - [x] Real-data validation on 20-type 100K-row dataset
 
 ### Planned

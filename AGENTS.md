@@ -52,7 +52,7 @@ python examples/churn/run_api.py
 ## Checkpoint
 
 - Last verified green: M23 audit & hardening + M24 phase-2 gap closure
-  + M25 C-5 fix (994 passed, ruff clean; claims-as-assertions, architecture boundary
+  + M25 C-5 fix + M26 PyPI packaging (1000 passed, ruff clean; claims-as-assertions, architecture boundary
   tests, Hypothesis property tests, leakage scenarios, experience-store
   isolation, fuzz suite incl. SSRF & JSON-depth guards, benchmarks,
   export/runtime equivalence, artifact-hash lineage — documented in

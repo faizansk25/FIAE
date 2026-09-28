@@ -6,7 +6,7 @@ Heavy capabilities are optional adapters behind dependency tiers.
 Purple identity: #C084FC → #6D28D9
 """
 
-__version__ = "0.0.1"
+__version__ = "0.1.0"
 
 # Expose the CLI color system for branded outputs
 from . import cli_colors

@@ -11,10 +11,9 @@ Usage:
     python setup.py bdist_wheel             # Build wheel for distribution
 """
 
-from setuptools import setup, find_packages, Extension
-from Cython.Build import cythonize
-import numpy as np
+from setuptools import setup, Extension
 import os
+import sys
 
 # Core modules to compile with Cython
 # These contain the most sensitive algorithms
@@ -34,7 +33,34 @@ CORE_EXTENSIONS = [
 
 # Build Cython extensions
 def get_extensions():
-    """Get Cython extension modules."""
+    """Get Cython extension modules.
+
+    Graceful degradation: if Cython or a C compiler is unavailable (pip
+    install from sdist on Colab, notebooks, Windows without MSVC, ...),
+    return an empty extension list so the wheel builds pure-Python. The
+    package is fully functional without the compiled modules -- they are
+    an optimization, never a requirement (doc 11 "never crash").
+    """
+    # Opt-out / opt-in switch.
+    if os.environ.get("FIAE_NO_CYTHON"):
+        return []
+    try:
+        import numpy as np
+        from Cython.Build import cythonize  # noqa: F401 (availability probe)
+    except ImportError:
+        print("fiae setup: Cython/numpy unavailable; building pure-Python wheel", file=sys.stderr)
+        return []
+    # Compiler probe: a missing toolchain must degrade, not fail the build.
+    try:
+        from setuptools._distutils.ccompiler import new_compiler
+        import setuptools._distutils as distutils
+        comp = new_compiler()
+        _ = distutils.errors.DistutilsPlatformError  # module sanity
+        if not comp.has_function("printf", includes=["stdio.h"]):
+            raise RuntimeError("no working C compiler")
+    except Exception:
+        print("fiae setup: no usable C compiler; building pure-Python wheel", file=sys.stderr)
+        return []
     extensions = []
     for module_path in CORE_EXTENSIONS:
         if os.path.exists(module_path):
@@ -56,10 +82,13 @@ def get_extensions():
     return extensions
 
 
-setup(
-    name="fiae",
-    ext_modules=cythonize(
-        get_extensions(),
+def _maybe_cythonize(extensions):
+    """cythonize when extensions exist; otherwise return [] (pure-Python)."""
+    if not extensions:
+        return []
+    from Cython.Build import cythonize
+    return cythonize(
+        extensions,
         compiler_directives={
             "language_level": "3",
             # Annotations here are documentation; pure Python never enforces
@@ -75,6 +104,10 @@ setup(
             "wraparound": True,
             "cdivision": False,
         },
-    ),
-    include_dirs=[np.get_include()],
+    )
+
+
+setup(
+    name="fiae",
+    ext_modules=_maybe_cythonize(get_extensions()),
 )

@@ -500,6 +500,47 @@ def _enable_windows_ansi() -> None:
         pass
 
 
+def _error_hints(err: "FIAEError") -> list[str]:
+    """Actionable next-step hints for probable error causes (CLI tooltips).
+
+    Each hint names a concrete recovery action, not a restatement of the
+    error. Kept in one place so `--json` consumers can reuse it via
+    err.to_dict()['evidence'] too.
+    """
+    hints: list[str] = []
+    code = err.code
+    ev = err.evidence or {}
+    if code == ErrorCode.DATA_FORMAT_ERROR:
+        path = ev.get("path", "")
+        if path:
+            hints.append(f"check the path exists and is readable: '{path}'")
+        hints.append("run `fiae connect SOURCE` to auto-detect the source type")
+        hints.append("supported: CSV/TSV, JSON/NDJSON, Parquet, XLSX, and https?:// URLs")
+    if code == ErrorCode.SCHEMA_AMBIGUITY:
+        hints.append("try `fiae inspect SOURCE --mode fast` to see how the file is parsed")
+        hints.append("pass --delimiter explicitly if auto-detection guesses wrong")
+    if code == ErrorCode.TARGET_MISSING:
+        target = ev.get("target", "")
+        hints.append(f"run `fiae inspect SOURCE` to list available columns (target '{target}' not found)")
+        hints.append("column names are case-sensitive")
+    if code == ErrorCode.TARGET_INVALID:
+        hints.append("pick a column with more than one distinct value as the target")
+    if code == ErrorCode.TASK_AMBIGUOUS:
+        hints.append("state the task explicitly in the config (classification|regression)")
+    if code == ErrorCode.LEAKAGE_CONFIRMED:
+        hints.append("remove the flagged column(s) or override explicitly if the finding is a false positive")
+        hints.append("run `fiae leakage SOURCE --target Y` for the per-column report")
+    if code in (ErrorCode.RESOURCE_PRECHECK_FAILED, ErrorCode.TRIAL_TIMEOUT, ErrorCode.TRIAL_OOM):
+        hints.append("reduce scope: fewer candidate features, --max-rows, or a faster profile mode")
+    if code == ErrorCode.SOURCE_CHANGED_DURING_RUN:
+        hints.append("the file changed mid-run; re-run on a stable copy")
+    if code == ErrorCode.ARTIFACT_CORRUPTION:
+        hints.append("the stored artifact failed its hash check; re-run the pipeline to regenerate it")
+    if not hints:
+        hints.append("run with --json to get the structured error payload for bug reports")
+    return hints
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     _enable_windows_ansi()
     try:
@@ -539,5 +580,9 @@ def main(argv: Optional[list[str]] = None) -> int:
             print(json.dumps({"error": err.to_dict()}, ensure_ascii=False))
         else:
             print(f"\n  {C.error_header()} [{C.red(err.code.value)}] {err.safe_message}\n",
+                  file=sys.stderr)
+            for line in _error_hints(err):
+                print(f"  {C.gray('tip:')} {line}", file=sys.stderr)
+            print(f"  {C.gray('docs:')} https://github.com/faizansk25/FIAE#cli-reference",
                   file=sys.stderr)
         return 2

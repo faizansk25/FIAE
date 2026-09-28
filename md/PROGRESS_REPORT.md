@@ -1827,3 +1827,57 @@ the distinct-ratio identifier heuristic.
 
 - Full suite: **994 passed** (983 → +11), 0 failures.
 - `ruff check src/fiae tests examples conftest.py benchmarks tools`: clean.
+
+---
+
+## M26 - PyPI-Ready Packaging, Adaptive Logo, CLI Error Hints
+
+**Date:** 2026-09-28
+**Objective:** Make FIAE installable everywhere Python runs (PyPI, Colab,
+notebooks, IDEs, CI) with a proper versioned release, replace the raster
+logo with an environment-adaptive SVG, and add actionable CLI error
+feedback.
+
+### What Was Done
+
+**Packaging (`pyproject.toml`, `setup.py`, `MANIFEST.in`)**
+- Version 0.0.1 → **0.1.0** (first real release; semver pinned by
+  `tests/test_api_stability.py`).
+- Added `project.urls` (Homepage/Repository/Issues/Changelog) and authors.
+- `setup.py` now **degrades gracefully**: no Cython, no numpy, no C
+  compiler, or `FIAE_NO_CYTHON=1` → pure-Python wheel. `pip install fiae`
+  can no longer fail for toolchain reasons (the compiled modules are an
+  optimization, never a requirement).
+- `MANIFEST.in` fixed: removed the nonexistent `docs/` graft and asset
+  grafts; sdist stays lean.
+
+**Wheel verification (dry run)**
+- `python -m build` → sdist + pure-Python wheel on this MSVC-less machine
+  (previously impossible); both pass `twine check`.
+- Wheel contains 98 modules, license, metadata, `fiae` entry point.
+- Installed into a scratch venv and ran the full suite against the
+  *installed* wheel: 967 passed, 4 skipped (tier-2 extras not installed).
+
+**Adaptive logo**
+- `logo.svg` replaces `assets/fiae-logo.png` (raster removed). Pure-vector
+  FIAE mark with a `prefers-color-scheme` media query — dark ink on light
+  themes, light gray on dark — so one file works on GitHub light/dark.
+- Bug caught during creation: an XML-hostile fragment inside the SVG CSS
+  comment broke parsing; fixed and validated with ElementTree.
+
+**CLI error hints (tooltips)**
+- `fiae` CLI failures now print actionable `tip:` lines per error code
+  (e.g. TARGET_MISSING → "run `fiae inspect SOURCE` to list columns;
+  names are case-sensitive"), plus a docs link. Structured `--json` output
+  unchanged.
+- Locked by `tests/test_cli_error_hints.py` (6 tests incl. an end-to-end
+  subprocess run asserting exit code 2, the code, a tip, and the docs link).
+
+**Repo hygiene**
+- Removed build/egg-info/generated-.c artifacts from disk; `*.c` now
+  gitignored so Cython output can never be committed.
+
+### Verification
+
+- Full suite: **1000 passed** (994 → +6), 0 failures.
+- `ruff check src/fiae tests examples conftest.py benchmarks tools setup.py`: clean.
