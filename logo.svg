@@ -1,57 +1,130 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1440 540" role="img" aria-label="FIAE logo">
-  <!-- The FIAE matrix wordmark, generated cell-for-cell from
-       src/fiae/identity.py _LETTERS (the CLI banner), with the brand
-       purple ramp #C084FC -> #6D28D9 applied per column exactly like
-       the ANSI-256 gradient in banner(). Row runs are merged so the
-       blocks are seamless, like the terminal banner. -->
+<svg xmlns="http://www.w3.org/2000/svg"
+     viewBox="0 0 1440 520"
+     role="img"
+     aria-labelledby="fiae-title fiae-desc">
+
+  <title id="fiae-title">
+    FIAE — Feature Intelligence &amp; Architecture Engine
+  </title>
+
+  <desc id="fiae-desc">
+    FIAE brand mark: a terminal chevron flowing into an architecture graph,
+    paired with a geometric FIAE wordmark.
+  </desc>
+
   <defs>
+
+    <linearGradient id="fiae-purple"
+                    x1="0%" y1="0%"
+                    x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C084FC"/>
+      <stop offset="48%" stop-color="#9333EA"/>
+      <stop offset="100%" stop-color="#6D28D9"/>
+    </linearGradient>
+
+    <linearGradient id="fiae-purple-horizontal"
+                    x1="0%" y1="0%"
+                    x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#C084FC"/>
+      <stop offset="52%" stop-color="#9333EA"/>
+      <stop offset="100%" stop-color="#6D28D9"/>
+    </linearGradient>
+
     <style>
-      /* Environment-adaptive tagline: dark ink in light mode, light gray in dark. */
-      :root { --fia-text: #4c1d95; }
-      @media (prefers-color-scheme: dark) { :root { --fia-text: #c4b5fd; } }
-      .fia-text { fill: var(--fia-text); }
-      .text-sub {
-        font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-        font-weight: 600; font-size: 27px; letter-spacing: 6px;
-        text-transform: uppercase;
+      :root {
+        --fiae-text: #4C1D95;
+        --fiae-muted: #7C3AED;
       }
-      .text-cli {
-        font-family: ui-monospace, "JetBrains Mono", Consolas, monospace;
-        font-weight: 500; font-size: 20px;
+
+      @media (prefers-color-scheme: dark) {
+        :root {
+          --fiae-text: #EDE9FE;
+          --fiae-muted: #C4B5FD;
+        }
       }
-      .dim { opacity: 0.55; }
+
+      .descriptor {
+        fill: var(--fiae-text);
+        font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font-size: 25px;
+        font-weight: 650;
+        letter-spacing: 5.5px;
+      }
+
+      .micro {
+        fill: var(--fiae-muted);
+        font-family: "JetBrains Mono", "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+        font-size: 15px;
+        font-weight: 600;
+        letter-spacing: 3px;
+      }
     </style>
+
   </defs>
 
-    <rect x="30" y="30" width="300" height="60" fill="#b87cf9"/>
-    <rect x="390" y="30" width="300" height="60" fill="#a263ef"/>
-    <rect x="810" y="30" width="180" height="60" fill="#8b49e6"/>
-    <rect x="1110" y="30" width="300" height="60" fill="#7530dc"/>
-    <rect x="30" y="90" width="60" height="60" fill="#c084fc"/>
-    <rect x="390" y="90" width="120" height="60" fill="#a769f2"/>
-    <rect x="750" y="90" width="60" height="60" fill="#9352e9"/>
-    <rect x="990" y="90" width="60" height="60" fill="#8441e3"/>
-    <rect x="1110" y="90" width="60" height="60" fill="#7c39df"/>
-    <rect x="30" y="150" width="300" height="60" fill="#b87cf9"/>
-    <rect x="390" y="150" width="120" height="60" fill="#a769f2"/>
-    <rect x="750" y="150" width="300" height="60" fill="#8b49e6"/>
-    <rect x="1110" y="150" width="300" height="60" fill="#7530dc"/>
-    <rect x="30" y="210" width="60" height="60" fill="#c084fc"/>
-    <rect x="390" y="210" width="120" height="60" fill="#a769f2"/>
-    <rect x="750" y="210" width="60" height="60" fill="#9352e9"/>
-    <rect x="990" y="210" width="60" height="60" fill="#8441e3"/>
-    <rect x="1110" y="210" width="60" height="60" fill="#7c39df"/>
-    <rect x="30" y="270" width="60" height="60" fill="#c084fc"/>
-    <rect x="390" y="270" width="120" height="60" fill="#a769f2"/>
-    <rect x="750" y="270" width="60" height="60" fill="#9352e9"/>
-    <rect x="990" y="270" width="60" height="60" fill="#8441e3"/>
-    <rect x="1110" y="270" width="300" height="60" fill="#7530dc"/>
-    <rect x="30" y="330" width="60" height="60" fill="#c084fc"/>
-    <rect x="390" y="330" width="300" height="60" fill="#a263ef"/>
-    <rect x="750" y="330" width="60" height="60" fill="#9352e9"/>
-    <rect x="990" y="330" width="60" height="60" fill="#8441e3"/>
-    <rect x="1110" y="330" width="60" height="60" fill="#7c39df"/>
+  <!-- FIAE brand system: same identity across CLI, GUI/dashboard, README,
+       docs, favicon, app icon. Installation commands do NOT belong here. -->
 
-  <text x="720" y="452" text-anchor="middle" class="fia-text text-sub">Feature Intelligence &amp; Architecture Engine</text>
-  <text x="720" y="490" text-anchor="middle" class="fia-text text-cli dim">&gt; pip install fiae</text>
+  <!-- PRIMARY SYMBOL: terminal prompt + feature / architecture graph -->
+  <g transform="translate(82 118)">
+
+    <rect x="0" y="0" width="184" height="184" rx="42"
+      fill="none" stroke="url(#fiae-purple)" stroke-width="12"/>
+
+    <path d="M 42 58 L 72 92 L 42 126"
+      fill="none" stroke="url(#fiae-purple)" stroke-width="14"
+      stroke-linecap="round" stroke-linejoin="round"/>
+
+    <path d="M 86 92 H 112"
+      fill="none" stroke="url(#fiae-purple)" stroke-width="12"
+      stroke-linecap="round"/>
+
+    <path d="M 126 54 V 130"
+      fill="none" stroke="url(#fiae-purple)" stroke-width="8"
+      stroke-linecap="round"/>
+
+    <circle cx="126" cy="54" r="11" fill="#C084FC"/>
+    <circle cx="126" cy="92" r="11" fill="#9333EA"/>
+    <circle cx="126" cy="130" r="11" fill="#6D28D9"/>
+
+  </g>
+
+  <!-- FIAE CUSTOM VECTOR WORDMARK (no external font required) -->
+  <g transform="translate(330 112)" fill="url(#fiae-purple-horizontal)">
+
+    <path d="M 0 0 H 190 V 38 H 48 V 88 H 170 V 126 H 48 V 214 H 0 Z"/>
+
+    <path d="M 238 0 H 286 V 214 H 238 Z"/>
+
+    <path fill-rule="evenodd"
+      d="M 330 214 L 410 0 H 464 L 544 214 H 494 L 477 166 H 397 L 380 214 Z
+         M 410 130 H 464 L 437 51 Z"/>
+
+    <path d="M 590 0 H 790 V 38 H 638 V 85 H 774 V 123 H 638 V 176 H 790 V 214 H 590 Z"/>
+
+  </g>
+
+  <!-- ARCHITECTURE ACCENT: branching / pipeline composition -->
+  <g transform="translate(1170 131)"
+    fill="none" stroke="url(#fiae-purple)"
+    stroke-linecap="round" stroke-linejoin="round">
+
+    <path d="M 0 22 H 54 V 72 H 114" stroke-width="8"/>
+    <path d="M 0 168 H 54 V 118 H 114" stroke-width="8"/>
+
+    <circle cx="0" cy="22" r="8" fill="#C084FC" stroke="none"/>
+    <circle cx="0" cy="168" r="8" fill="#A855F7" stroke="none"/>
+    <circle cx="114" cy="72" r="8" fill="#7C3AED" stroke="none"/>
+    <circle cx="114" cy="118" r="8" fill="#6D28D9" stroke="none"/>
+
+  </g>
+
+  <text x="720" y="390" text-anchor="middle" class="descriptor">
+    FEATURE INTELLIGENCE · ARCHITECTURE ENGINE
+  </text>
+
+  <text x="720" y="430" text-anchor="middle" class="micro">
+    SAFETY-FIRST FEATURE ENGINEERING
+  </text>
+
 </svg>

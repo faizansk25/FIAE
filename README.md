@@ -227,27 +227,28 @@ fiae learn data.csv --target is_returned
 
 ## Installation
 
-### From PyPI (recommended)
-
-```bash
-pip install fiae
-
-# With ML capabilities (scikit-learn, polars, ...)
-pip install "fiae[tier1]"
-
-# Full stack
-tier2 extras are also available: pip install "fiae[tier1,tier2]"
-```
-
-Works everywhere Python runs — terminals, Colab, Jupyter/JupyterLab, VS Code, PyCharm, CI, Docker. The core engine has **zero third-party dependencies** (stdlib only); the wheel installs even without a C compiler (Cython acceleration is an optional optimization, auto-skipped when no toolchain is present).
-
 ### From source
 
 ```bash
 git clone https://github.com/faizansk25/FIAE.git
 cd FIAE
-pip install -e ".[dev]"
+
+# Core only — zero third-party runtime dependencies
+pip install -e .
+
+# Recommended development + ML environment
+pip install -e ".[dev,tier1]"
+
+# Full optional ML stack
+pip install -e ".[dev,tier1,tier2]"
 ```
+
+> **PyPI release:** FIAE is not yet published as an official PyPI
+> package. Install directly from source until the first public release.
+>
+> When it ships, the wheel will install even without a C compiler —
+> Cython acceleration is an optional optimization, auto-skipped when no
+> toolchain is present.
 
 ### Dependency tiers
 

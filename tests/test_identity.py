@@ -158,3 +158,77 @@ def test_cli_banner_no_tagline(capsys):
     out = capsys.readouterr().out
     assert "FEATURE INTELLIGENCE" not in out
     assert len(out.splitlines()) == 6
+
+
+# ---------------------------------------------------------------------------
+# Brand-system additions (M27): helpers, gradient, drift lock
+# ---------------------------------------------------------------------------
+
+def test_mix_endpoints_and_clamping():
+    from fiae.identity import PURPLE_DARK, PURPLE_LIGHT, _mix
+    assert _mix(PURPLE_LIGHT, PURPLE_DARK, 0.0) == PURPLE_LIGHT
+    assert _mix(PURPLE_LIGHT, PURPLE_DARK, 1.0) == PURPLE_DARK
+    # clamped outside [0, 1]
+    assert _mix(PURPLE_LIGHT, PURPLE_DARK, -5.0) == PURPLE_LIGHT
+    assert _mix(PURPLE_LIGHT, PURPLE_DARK, 5.0) == PURPLE_DARK
+
+
+def test_wordmark_gradient_is_monotonic():
+    """Left edge lighter than right edge: continuous brand gradient."""
+    from fiae.identity import _PURPLE_RAMP, banner
+    out = banner(force_color=True)
+    first_code = _PURPLE_RAMP[0]
+    last_code = _PURPLE_RAMP[-1]
+    assert f"38;5;{first_code}" in out   # light purple at the left
+    assert f"38;5;{last_code}" in out    # deep purple at the right
+
+
+def test_wordmark_matches_letter_geometry():
+    """Drift lock: plain banner must equal the _LETTERS grid exactly."""
+    from fiae.identity import _cell_char, _LETTERS, banner
+    cell = _cell_char()
+    word = "FIAE"
+    height = len(_LETTERS["F"])
+    grid = []
+    for r in range(height):
+        row = ""
+        for i, ch in enumerate(word):
+            row += _LETTERS[ch][r].replace("#", cell).replace(".", " ")
+            if i < len(word) - 1:
+                row += " "
+        grid.append(row)
+    assert banner(force_color=False).splitlines() == grid
+
+
+def test_render_banner_contents():
+    from fiae.identity import PRODUCT_LONG_NAME, PRODUCT_TAGLINE, render_banner
+    out = render_banner(force_color=False)
+    assert PRODUCT_LONG_NAME in out
+    assert PRODUCT_TAGLINE in out
+    with_tag = render_banner(tagline=True, force_color=False).splitlines()
+    without = render_banner(tagline=False, force_color=False).splitlines()
+    assert len(with_tag) > len(without)
+
+
+def test_compact_mark_shape():
+    from fiae.identity import compact_mark
+    lines = compact_mark(force_color=False).splitlines()
+    assert len(lines) == 5
+    assert lines[0].startswith(">")
+    # no-color output must be plain
+    assert "\x1b" not in compact_mark(force_color=False)
+    assert "\x1b[" in compact_mark(force_color=True)
+
+
+def test_no_color_env_suppresses_ansi(monkeypatch):
+    import fiae.identity as ident
+    monkeypatch.setenv("NO_COLOR", "1")
+    assert "\x1b" not in ident.banner(force_color=None)
+    assert "\x1b" not in ident.splash(force_color=None)
+
+
+def test_brand_product_constants():
+    from fiae.identity import PRODUCT_LONG_NAME, PRODUCT_NAME, PRODUCT_TAGLINE
+    assert PRODUCT_NAME == "FIAE"
+    assert "FEATURE INTELLIGENCE" in PRODUCT_LONG_NAME
+    assert "Safety-first" in PRODUCT_TAGLINE
