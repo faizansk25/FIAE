@@ -1954,3 +1954,34 @@ No code changes required for D-1 (docs only); W-6/W-7 registered in
 - Full suite: **1013 passed, 0 skipped, 0 failed** (incl. 17 real-data).
 - README link checker: 0 missing.
 - CI: green through `115645a`.
+
+## M31 - W-6/W-7 Sandbox Hardening + README Integrity Lock + Real Benchmarks
+
+**W-6 fixed**: `run_in_sandbox` now interrupts the runaway thread on timeout
+via `PyThreadState_SetAsyncExc` with a `BaseException`-derived interrupt (so
+`except Exception` in user code cannot swallow it). Before: thread count
+stayed elevated after timeout (CPU burn until exit). After: live probe shows
+thread count returns to baseline. Locked by `test_sandbox_hardening.py`.
+
+**W-7 fixed**: `max_memory_bytes` enforced as a pre-execution gate on the
+declared payload (args/kwargs via `sys.getsizeof`); oversized payloads are
+rejected *before* the function runs (test asserts the payload never
+executes). OS-level RSS limiting (cgroups/ulimit/JobObjects) remains a
+documented out-of-scope boundary, honestly stated in the docstring.
+
+**D-1 locked**: `tests/test_readme_integrity.py` (5 tests) — every md/ and
+repo path referenced in README must exist on disk; tests badge must track
+collection; design-doc count claim must match disk. D-1 class drift now
+fails CI.
+
+**Real benchmark numbers recorded** (bench_core.py, this machine,
+2026-09-29): log1p 1M rows 4.59s @ 34.9MB peak; 100K wide (50 cols) 25.6s
+@ 136.8MB; missing-heavy 100K 0.25s; canonical pipeline 1K rows 5.0s.
+Peak-memory figures confirm the streaming design (3.5MB for 100K-row
+narrow runs).
+
+### Verification
+
+- New tests: +8 (3 sandbox hardening W-6, 3 memory gate W-7, 5 README
+  integrity; net +8 after removal of none).
+- `ruff check`: clean. Live W-6 probe: threads 1 → 1 (was 1 → 2).
