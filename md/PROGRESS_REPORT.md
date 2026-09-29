@@ -1881,3 +1881,52 @@ feedback.
 
 - Full suite: **1000 passed** (994 → +6), 0 failures.
 - `ruff check src/fiae tests examples conftest.py benchmarks tools setup.py`: clean.
+
+## M29 - Claims Re-Baseline, Imbalanced-CV Fix, Hardware Docs, Ownership Cleanup
+
+### Imbalanced-CV bug found and fixed (user-facing)
+
+The flagship example (`examples/churn/run_api.py`) silently produced failed
+HPO trials on every run: the synthetic generator emitted a 1.75%-positive
+target (393:7) and `_evaluate_cv` used plain `KFold`, so some folds held a
+single class → ROC-AUC undefined → `failed:roc_auc` → "No model trained".
+Two fixes:
+
+- `src/fiae/orchestration/model_training.py`: classification CV now uses
+  `StratifiedKFold` with `n_splits` bounded by the rarest class count;
+  regression keeps plain `KFold`.
+- `examples/churn/run_api.py`: generator rebalanced to ~12.5% positives.
+
+Fresh verified run: 665 proposals → 200 unique → funnel 27/23/21 →
+**4-feature portfolio**; all 4 model families train and complete;
+logistic ROC-AUC **0.763** (fold-std 0.005); **11/11 export gates**.
+Locked by `tests/test_cv_imbalanced.py` (5 tests).
+
+### README claims re-baselined (audit findings)
+
+- "Proven end-to-end" table updated to the freshly measured numbers above
+  (was stale: 17→15→4 funnel, RF 0.713, v0.0.2).
+- Tests badge 1000 → **1009**; testing table 45 files → **53**; version
+  references unified on **v0.1.0**.
+- Leakage claim reworded: detectors catch *known patterns*; no tool can
+  guarantee absence of leakage (L5 = review, not silent pass).
+- "row-level feature parity" wording scoped to match the W-2 reality
+  (parity checks; full value-level row parity tracked as W-2 hardening).
+- New **Hardware & resource adaptivity** section: CPU worker scaling,
+  chunked/bounded memory intake, sandbox limits, vendor-neutral pure-Python
+  core, 3-OS × x86_64/arm64 wheel verification. Honest note: FIAE is
+  CPU-first; GPUs only via tier-2 backend configuration.
+
+### Ownership / contributor hygiene
+
+- All commit trailers (`Co-Authored-By: Codebuff`, `Generated with
+  Codebuff`) removed from history; `faizansk25` is the sole author and
+  committer of every commit.
+- Working tree purged of generated dirs (`__pycache__`, caches, runs);
+  tracked tree is exactly src/tests/md/examples/benchmarks/tools/.github
+  + 16 root files.
+
+### Verification
+
+- Full suite: **1001 passed, 12 skipped** (997 → +4 net), 0 failures.
+- `ruff check`: clean. Example smoke: 10/10 phases, 0 errors.
