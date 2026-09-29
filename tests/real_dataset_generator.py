@@ -5,6 +5,7 @@ with 20 distinct column types that test every FIAE operator family.
 """
 
 import csv
+import math
 import os
 import random
 from datetime import datetime, timedelta
@@ -126,8 +127,9 @@ def generate_dataset(output_path: str, n_rows: int = 100_000, target_size_mb: fl
             # 8. customer_segment (high cardinality)
             customer_segment = rng.choice(segments)
 
-            # 9. is_returned (boolean)
-            is_returned = 1 if rng.random() < 0.08 else 0
+            # 9. is_returned (boolean) — computed below, after rating &
+            # shipping_cost, using a learnable logistic signal.
+            is_returned = 0
 
             # 10. order_date (datetime)
             days_offset = rng.randint(0, 365)
@@ -168,6 +170,18 @@ def generate_dataset(output_path: str, n_rows: int = 100_000, target_size_mb: fl
 
             # 20. delivery_hours (float, positive)
             delivery_hours = round(max(0.5, rng.gauss(48.0, 24.0)), 1)
+
+            # 9. is_returned (boolean)
+            # Learnable signal: high discount, high price, low rating and
+            # paid shipping raise the return odds, on a ~10% base rate.
+            logit = (
+                -3.1
+                + 0.9 * (discount_pct / 75.0)
+                + 1.2 * math.log1p(price) / math.log1p(10000.0)
+                - 0.5 * (rating - 3) / 2.0
+                + (0.4 if shipping_cost > 0 else -0.2)
+            )
+            is_returned = 1 if rng.random() < 1 / (1 + math.exp(-logit)) else 0
 
             # Add some missing values (realistic)
             row = [
