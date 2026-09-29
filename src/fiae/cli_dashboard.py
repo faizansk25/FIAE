@@ -175,7 +175,10 @@ def cmd_benchmarks(args) -> int:
             try:
                 op.transform(data[:100])
                 count += 1
-            except Exception:
+            except (ArithmeticError, ValueError, TypeError, IndexError, KeyError):
+                # Operators may reject this sample's shape/values (e.g.
+                # domain errors on gaussian noise); the throughput probe
+                # only counts successes (W-3: narrowed from Exception).
                 pass
     t1 = time.monotonic()
     print(C.status_line(

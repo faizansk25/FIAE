@@ -23,19 +23,26 @@ class TestW6RunawayThreadInterrupt:
         """After timeout the runaway pure-Python thread must unwind, leaving
         no live spinning thread behind."""
         policy = SandboxPolicy(max_execution_time_s=0.5)
-        before = threading.active_count()
+        marker = threading.Event()
 
-        result = run_in_sandbox(_spin_forever, policy=policy)
+        def spin_until_interrupted():
+            x = 0
+            while not marker.is_set():
+                x += 1
+
+        result = run_in_sandbox(spin_until_interrupted, policy=policy)
 
         assert not result.success
         assert "timed out" in (result.error or "")
-        # Give the async interrupt a moment to land, then verify.
-        deadline = time.monotonic() + 3.0
-        while threading.active_count() > before and time.monotonic() < deadline:
+        # The async interrupt must land: wait (bounded) for the thread to
+        # fully exit rather than racing active_count() under suite load.
+        deadline = time.monotonic() + 5.0
+        while threading.active_count() >= 2 and time.monotonic() < deadline:
             time.sleep(0.05)
-        assert threading.active_count() <= before, (
+        assert threading.active_count() < 2, (
             "runaway sandbox thread is still alive after timeout — W-6 regressed"
         )
+        marker.set()
 
     def test_interrupt_result_reports_warning(self):
         policy = SandboxPolicy(max_execution_time_s=0.5)

@@ -489,6 +489,9 @@ def cmd_banner(args: argparse.Namespace) -> int:
 
 def _enable_windows_ansi() -> None:
     """Enable ANSI/VT processing on Windows 10+ consoles."""
+    # Best-effort UI enhancement: any failure means the console simply
+    # keeps its default mode. Only the specific failure modes of this
+    # Windows API path are swallowed (W-3).
     try:
         import ctypes
         kernel32 = ctypes.windll.kernel32
@@ -496,7 +499,9 @@ def _enable_windows_ansi() -> None:
         mode = ctypes.c_ulong()
         if kernel32.GetConsoleMode(handle, ctypes.byref(mode)):
             kernel32.SetConsoleMode(handle, mode.value | 0x0004)
-    except Exception:
+    except (ImportError, AttributeError, OSError):
+        # ImportError: non-Windows (no windll); AttributeError: mocked/
+        # stripped kernel32; OSError: invalid handle on redirected output.
         pass
 
 
@@ -546,8 +551,10 @@ def main(argv: Optional[list[str]] = None) -> int:
     try:
         import colorama
         colorama.init(strip=False)
-    except Exception:
-                pass
+    except (ImportError, OSError, ValueError):
+        # colorama is optional (not in core deps); init failures on odd
+        # consoles degrade to plain output (W-3).
+        pass
     parser = build_parser()
     if argv is None:
         argv_ = sys.argv[1:]

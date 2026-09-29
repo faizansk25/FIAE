@@ -1985,3 +1985,33 @@ narrow runs).
 - New tests: +8 (3 sandbox hardening W-6, 3 memory gate W-7, 5 README
   integrity; net +8 after removal of none).
 - `ruff check`: clean. Live W-6 probe: threads 1 → 1 (was 1 → 2).
+
+## M32 - W-3 Narrow Exceptions + Flake-Proofed W-6 Test + CI Real-Data Fixture
+
+**W-3 fixed**: all broad `except Exception` sites narrowed —
+
+- `cli.py` ×2: Windows-ANSI path catches `(ImportError, AttributeError,
+  OSError)`; colorama init catches `(ImportError, OSError, ValueError)`.
+- `cli_dashboard.py`: throughput probe catches only operator-domain
+  errors `(ArithmeticError, ValueError, TypeError, IndexError, KeyError)`.
+- `experiment/tracking.py` ×6: backend failures catch
+  `(OSError, ValueError, RuntimeError, AttributeError)` **and surface in
+  the audit log** (`backend_error` events); the audit-writer itself
+  catches `(OSError, TypeError, ValueError)`. Unexpected error types now
+  propagate — pinned by a KeyboardInterrupt-propagation test.
+- `events.py` had zero broad sites (the audit note was stale; corrected).
+
+**Flake-proofed W-6 test**: the thread-count assertion previously raced
+the async interrupt under full-suite load (one transient failure in M31).
+The runaway thread now spins on an Event and the test waits (bounded 5s)
+for full thread exit before asserting.
+
+**CI real-data fixture**: the 100K-row generator now runs as a workflow
+step before the suite on all 9 matrix jobs (3 OS × 3 Python) and the
+coverage job — the 17 real-data tests no longer skip in CI, making the
+100K-row validation claim CI-proven on every push.
+
+### Verification
+
+- Full suite: **1030 passed, 0 skipped, 0 failed** (4:52).
+- `ruff check`: clean. Workflow YAML strict-parse: OK (5 jobs).

@@ -98,8 +98,13 @@ class ExperimentTracker:
                 elif self.config.backend == "wandb":
                     import wandb
                     wandb.log(clean, step=step)
-            except Exception:
-                pass  # tracking must never crash the pipeline
+            except (OSError, ValueError, RuntimeError, AttributeError) as exc:
+                # Tracking backends are remote/unstable; their failures
+                # must never crash the pipeline (W-3: narrowed from
+                # Exception; unexpected error types still propagate).
+                self._log_audit("experiment", "backend_error",
+                                self.config.backend, {"reason": str(exc)},
+                                severity="warning")
 
     def log_artifact(self, path: str) -> None:
         """Attach a file artifact (report, model, exported code).
@@ -126,8 +131,10 @@ class ExperimentTracker:
                 elif self.config.backend == "wandb":
                     import wandb
                     wandb.save(path)
-            except Exception:
-                pass
+            except (OSError, ValueError, RuntimeError, AttributeError) as exc:
+                self._log_audit("experiment", "backend_error",
+                                self.config.backend, {"reason": str(exc)},
+                                severity="warning")
 
     def finish(self) -> None:
         """End the run and flush everything."""
@@ -146,8 +153,10 @@ class ExperimentTracker:
                 elif self.config.backend == "wandb":
                     import wandb
                     wandb.finish()
-            except Exception:
-                pass
+            except (OSError, ValueError, RuntimeError, AttributeError) as exc:
+                self._log_audit("experiment", "backend_error",
+                                self.config.backend, {"reason": str(exc)},
+                                severity="warning")
         self._active = False
 
     # ------------------------------------------------------------------
@@ -165,7 +174,7 @@ class ExperimentTracker:
             self._log_audit("pipeline", "backend_unavailable", "mlflow",
                             {"reason": "mlflow not installed"})
             return None
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, AttributeError) as exc:
             self._log_audit("pipeline", "backend_error", "mlflow",
                             {"reason": str(exc)}, severity="warning")
             return None
@@ -181,7 +190,7 @@ class ExperimentTracker:
             self._log_audit("pipeline", "backend_unavailable", "wandb",
                             {"reason": "wandb not installed"})
             return None
-        except Exception as exc:
+        except (OSError, ValueError, RuntimeError, AttributeError) as exc:
             self._log_audit("pipeline", "backend_error", "wandb",
                             {"reason": str(exc)}, severity="warning")
             return None
@@ -217,6 +226,9 @@ class ExperimentTracker:
                 action=action, subject=subject, details=details,
                 severity=severity, run_id=self.run_id))
             logger.flush()
-        except Exception:
+        except (OSError, TypeError, ValueError):
+            # Audit logging is best-effort: a broken run dir or an
+            # unserializable detail must not take down the pipeline
+            # (W-3: narrowed from Exception).
             pass
 
