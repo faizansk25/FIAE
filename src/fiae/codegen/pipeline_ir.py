@@ -96,6 +96,15 @@ class PipelineIR:
         errors = []
         node_ids = {n.node_id for n in self.nodes}
 
+        # Duplicate node_ids corrupt every downstream structure (Kahn's
+        # in-degree dict keys on id, outputs allowlist, codegen naming).
+        # Report them precisely instead of a misleading cycle error (W-8).
+        seen_ids: set[str] = set()
+        for node in self.nodes:
+            if node.node_id in seen_ids:
+                errors.append(f"Duplicate node_id: {node.node_id}")
+            seen_ids.add(node.node_id)
+
         for node in self.nodes:
             for inp in node.inputs:
                 if not inp.startswith("raw:") and inp not in node_ids:

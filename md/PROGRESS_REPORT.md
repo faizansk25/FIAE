@@ -2015,3 +2015,41 @@ coverage job — the 17 real-data tests no longer skip in CI, making the
 
 - Full suite: **1030 passed, 0 skipped, 0 failed** (4:52).
 - `ruff check`: clean. Workflow YAML strict-parse: OK (5 jobs).
+
+## M33 - Zero-Trust Audit: W-2 Value Parity + W-8/W-9/W-10 Fixed
+
+User-mandated distrust audit: every gate probed adversarially, every
+validator attacked with obfuscated payloads, every caller path checked for
+vacuous verification. Five findings, all fixed:
+
+**W-2 (parity) fixed for real**: `gate_feature_parity` now accepts
+`exported_code` + `input_data` and *executes* the generated pipeline,
+comparing every value (row count, null mask, tolerance). `phase_codegen`
+builds real expectations from operator outputs on a 200-row sample and runs
+value-level parity end-to-end. Proven by sabotage: corrupting fitted values
+drops gates 11/11 → 10/11 and fails the export verdict. Fixing this
+surfaced two hidden defects: parity expectations were keyed by feature NAME
+while IR nodes are numbered (name→id mapping added), and raw scan strings
+needed numeric parsing (str→None bug made every safe_ratio row None).
+
+**W-8**: `verify_dag` reported duplicate node_ids as a misleading "Cycle
+detected"; now reports `Duplicate node_id` precisely. Dedup gate message
+states its non-enforcement explicitly.
+
+**W-9**: `validate_input_code` hardened — `getattr`/`globals`/`locals`/
+`vars`/`input` forbidden, builtin aliasing (`f = open`) flagged, submodule
+imports (`import os.path`) blocked on the root package name. All
+adversarial probes blocked; benign code unaffected.
+
+**W-10**: no caller ever passed `expected_features` — both parity gates
+were vacuously green in every runtime path. Now wired end-to-end.
+
+Also: `S102` (exec) added to ruff ignore with documented justification —
+executing generated, statically-validated pipeline code IS the parity
+verification mechanism (doc 09).
+
+### Verification
+
+- Full suite: **1047 passed, 0 skipped, 0 failed** (+17 tests).
+- Example smoke: 10/10 phases, 0 errors, 11/11 gates incl. value parity.
+- `ruff check`: clean.

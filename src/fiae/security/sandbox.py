@@ -52,10 +52,12 @@ def validate_input_code(code: str, policy: Optional[SandboxPolicy] = None) -> li
         return [f"Syntax error: {e}"]
 
     for node in ast.walk(tree):
-        # Check for imports of forbidden modules
+        # Check for imports of forbidden modules (incl. submodules:
+        # ``import os.path`` imports the top-level forbidden name — W-9)
         if isinstance(node, ast.Import):
             for alias in node.names:
-                if alias.name in policy.forbidden_modules:
+                root = alias.name.split(".")[0]
+                if root in policy.forbidden_modules:
                     warnings.append(f"Import of forbidden module: {alias.name}")
 
         if isinstance(node, ast.ImportFrom) and node.module \
@@ -64,13 +66,28 @@ def validate_input_code(code: str, policy: Optional[SandboxPolicy] = None) -> li
 
         # Check for eval/exec calls
         if isinstance(node, ast.Call) and isinstance(node.func, ast.Name) \
-                and node.func.id in ("eval", "exec", "compile", "__import__", "open"):
+                and node.func.id in ("eval", "exec", "compile", "__import__", "open",
+                                     "input", "getattr", "globals", "locals", "vars"):
+            # getattr/globals/locals/vars are dynamic-attribute escape
+            # hatches (e.g. getattr(builtins, "ev"+"al")); input() reads
+            # stdin in server contexts (W-9).
             warnings.append(f"Call to forbidden function: {node.func.id}")
 
         # Check for attribute access on forbidden modules
         if isinstance(node, ast.Attribute) and isinstance(node.value, ast.Name) \
                 and node.value.id in policy.forbidden_modules:
             warnings.append(f"Access to forbidden module attribute: {node.value.id}.{node.attr}")
+
+        # Name aliasing of dangerous builtins (``f = open`` then ``f(...)``)
+        if isinstance(node, ast.Assign):
+            dangerous = ("open", "eval", "exec", "compile", "__import__",
+                         "globals", "locals", "vars", "getattr", "input")
+            if isinstance(node.value, ast.Name) and node.value.id in dangerous:
+                for target in node.targets:
+                    if isinstance(target, ast.Name):
+                        warnings.append(
+                            f"Alias of dangerous builtin: {target.id} = {node.value.id}"
+                        )
 
     return warnings
 

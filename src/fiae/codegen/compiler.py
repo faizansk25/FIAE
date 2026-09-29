@@ -132,10 +132,17 @@ def gate_deduplicate(ir: PipelineIR) -> VerificationResult:
             duplicates.append(node.node_id)
         seen_hashes.add(h)
     dt = (time.monotonic() - t0) * 1000
+    # Informational by design: build_ir_from_proposals already deduplicates
+    # ("seen" registry) before the IR exists, so duplicates here indicate a
+    # hand-built IR. Reported, not failed — but the message must make the
+    # non-enforcement explicit (W-8 audit).
     return VerificationResult(
         gate_name="deduplicate",
         passed=True,
-        message=f"Found {len(duplicates)} duplicate nodes",
+        message=(
+            f"Found {len(duplicates)} duplicate nodes"
+            + (" (informational; not removed)" if duplicates else "")
+        ),
         details={"duplicates": duplicates},
         duration_ms=dt,
     )
@@ -208,14 +215,28 @@ def gate_feature_parity(
     ir: PipelineIR,
     expected_features: dict[str, list] | None = None,
     tolerance: float = 1e-6,
+    exported_code: str | None = None,
+    input_data: dict[str, list] | None = None,
 ) -> VerificationResult:
     """Step 18: Feature parity test.
 
-    Compare FIAE-runtime outputs vs exported pipeline outputs for identity,
-    dtype, row alignment, null mask, numeric tolerance.
+    Two levels of verification:
+
+    1. **Value-level parity (W-2, M33)**: when ``exported_code`` and
+       ``input_data`` are provided, the gate *executes* the generated
+       pipeline on the input data and compares every output value against
+       the expected runtime values (row count, null mask, numeric
+       tolerance). A wrong value, missing column, or length mismatch now
+       FAILS the gate — previously only node existence was checked.
+    2. **Structural parity**: ``expected_features`` node ids must exist in
+       the IR, and no expectation may reference a node outside it.
+
+    Passing no expectations at all is reported as a vacuous pass in the
+    message so callers cannot mistake it for verified parity.
     """
     t0 = time.monotonic()
     errors = []
+    warnings = []
 
     if expected_features:
         for node_id, values in expected_features.items():
@@ -223,15 +244,85 @@ def gate_feature_parity(
             if node is None:
                 errors.append(f"Expected feature {node_id} not in IR")
                 continue
-            # Check that the node can produce the right length
             if len(values) == 0:
-                continue
+                warnings.append(f"expectation for {node_id} is empty")
+
+    # --- W-2: execute the exported code and compare values -------------
+    if exported_code is not None and input_data is not None:
+        if not expected_features:
+            errors.append(
+                "exported-code parity requested without expected_features"
+            )
+        else:
+            try:
+                namespace: dict = {}
+                exec(compile(exported_code, "<exported_features>", "exec"), namespace)
+                apply_fn = namespace.get("apply_pipeline")
+                if apply_fn is None:
+                    errors.append("exported code has no apply_pipeline()")
+                    apply_fn = None
+            except SyntaxError as exc:
+                errors.append(f"exported code does not compile: {exc}")
+                apply_fn = None
+
+            if apply_fn is not None:
+                try:
+                    actual = apply_fn(input_data)
+                except Exception as exc:
+                    errors.append(f"exported pipeline raised: {exc}")
+                    actual = None
+
+                if actual is not None:
+                    for node_id, expected_values in expected_features.items():
+                        if node_id not in actual:
+                            errors.append(
+                                f"exported pipeline did not produce {node_id}"
+                            )
+                            continue
+                        got = actual[node_id]
+                        if len(got) != len(expected_values):
+                            errors.append(
+                                f"{node_id}: row count mismatch "
+                                f"(expected {len(expected_values)}, got {len(got)})"
+                            )
+                            continue
+                        for i, (exp, act) in enumerate(zip(expected_values, got)):
+                            exp_missing = exp is None or (
+                                isinstance(exp, float) and exp != exp
+                            )
+                            act_missing = act is None or (
+                                isinstance(act, float) and act != act
+                            )
+                            if exp_missing != act_missing:
+                                errors.append(
+                                    f"{node_id}[{i}]: null-mask mismatch "
+                                    f"(expected {exp!r}, got {act!r})"
+                                )
+                            elif not exp_missing:
+                                try:
+                                    if abs(float(exp) - float(act)) > tolerance:
+                                        errors.append(
+                                            f"{node_id}[{i}]: value mismatch "
+                                            f"(expected {exp!r}, got {act!r})"
+                                        )
+                                except (TypeError, ValueError):
+                                    if exp != act:
+                                        errors.append(
+                                            f"{node_id}[{i}]: value mismatch "
+                                            f"(expected {exp!r}, got {act!r})"
+                                        )
+
+    if not expected_features and exported_code is None:
+        warnings.append("no expectations provided - parity not exercised")
 
     dt = (time.monotonic() - t0) * 1000
+    message = "; ".join(errors) if errors else "Feature parity verified"
+    if warnings:
+        message = (message + " | " if message else "") + " | ".join(warnings)
     return VerificationResult(
         gate_name="feature_parity",
         passed=len(errors) == 0,
-        message="; ".join(errors) if errors else "Feature parity verified",
+        message=message,
         duration_ms=dt,
     )
 

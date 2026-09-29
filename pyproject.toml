@@ -89,6 +89,10 @@ ignore = [
   "BLE001", # blind except
   "S110",   # try-except-pass
   "S112",   # try-except-continue
+  # M33: the feature-parity gate intentionally executes GENERATED pipeline
+  # code (its own output, statically validated before emission) inside a
+  # bounded namespace. This is the verification mechanism itself (doc 09).
+  "S102",   # exec usage
   # Style-only, no behavioral value for this codebase:
   "SIM108", # ternary rewrites hurt readability here
   "RET504", # named return then return is fine

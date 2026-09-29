@@ -934,7 +934,95 @@ def phase_codegen(
             task=str(ctx.config_snapshot.get("task", "classification")),
         )
         result.pipeline_ir_id = ir.pipeline_id
+
+        # W-2 (M33): run the parity gate with REAL expected values — the
+        # fitted runtime's outputs on a sampled slice — so the exported
+        # code must reproduce the runtime feature-for-feature, not merely
+        # exist. A mismatch fails verification and blocks the export
+        # verdict (all_passed=False below).
+        expected_features: dict[str, list] | None = None
+        parity_input: dict[str, list] | None = None
+        try:
+            from ..intake import auto_adapter
+            from ..learn import scan_columns
+
+            source_path = str(ctx.config_snapshot.get("source", ""))
+            col_data = scan_columns(auto_adapter(source_path), max_rows=200)
+            if col_data:
+                def _parity_val(v):
+                    # scan_columns returns raw strings; parse numeric text
+                    # like _materialize_training_matrix does, else missing.
+                    if isinstance(v, bool):
+                        return 1.0 if v else 0.0
+                    if isinstance(v, (int, float)):
+                        return float(v)
+                    s = str(v).strip() if v is not None else ""
+                    try:
+                        return float(s)
+                    except (ValueError, TypeError):
+                        return None
+
+                parity_input = {
+                    name: [_parity_val(v) for v in vals[:200]]
+                    for name, vals in col_data.items()
+                }
+                # Expected values come from the operators themselves (raw
+                # semantics, incl. None for missing), NOT from
+                # FittedPipeline._to_float_list, which imputes None -> 0.0
+                # as a probe-matrix proxy. The exported code preserves
+                # doc-09 None semantics, so parity must compare like with
+                # like at the operator level.
+                from ..features.registry import get_operator
+
+                def _raw_output(p) -> list | None:
+                    arrays = []
+                    for fid in p.inputs:
+                        name = fid[4:] if fid.startswith("raw:") else fid
+                        if name not in parity_input:
+                            return None
+                        arrays.append(parity_input[name])
+                    if not arrays:
+                        return None
+                    op = get_operator(p.op)
+                    try:
+                        if op.arity == "unary":
+                            return op.transform(arrays[0], **p.params)
+                        if op.arity == "binary" and len(arrays) >= 2:
+                            return op.transform(arrays[0], arrays[1], **p.params)
+                    except Exception:
+                        return None
+                    return None
+
+                ir_ids = [n.node_id for n in ir.nodes]
+                expected_features = {}
+                for idx, proposal in enumerate(proposals):
+                    if idx >= len(ir_ids):
+                        break
+                    raw = _raw_output(proposal)
+                    if raw is not None:
+                        expected_features[ir_ids[idx]] = raw
+        except Exception as exc:
+            expected_features = None
+            parity_input = None
+            result.errors.append(f"parity fixture unavailable: {exc}")
+
         report = compile_pipeline(ir)
+        # Value-level parity: execute the generated code and compare.
+        if expected_features and parity_input:
+            from ..codegen.compiler import gate_feature_parity
+
+            parity_gate = gate_feature_parity(
+                ir,
+                expected_features=expected_features,
+                exported_code=report.generated_code,
+                input_data=parity_input,
+            )
+            # Replace the structural-only feature_parity result with the
+            # executed value-level result so the report reflects reality.
+            report.gates = [
+                parity_gate if g.gate_name == "feature_parity" else g
+                for g in report.gates
+            ]
         result.verification_gates_passed = sum(1 for g in report.gates if g.passed)
         result.verification_gates_total = len(report.gates)
 
@@ -1015,6 +1103,7 @@ def run_canonical_pipeline(
         # Phase 1: Bootstrap (steps 0001-0010)
         run_config = dict(config or {})
         run_config.setdefault("target", target)
+        run_config.setdefault("source", source_path)
         ctx = phase_bootstrap(source_path, target, run_config)
         result.run_id = ctx.run_id
         result.phases_completed = 1
