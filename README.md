@@ -665,21 +665,21 @@ FIAE is built on 16 design documents (md/00–15):
 | Document | Title |
 |---|---|
 | `md/00_MASTER_BLUEPRINT.md` | Master blueprint & 15 hard principles |
-| `md/01_ARCHITECTURE.md` | System architecture |
-| `md/02_INTAKE.md` | Data intake & profiling |
-| `md/03_LEAKAGE.md` | 6-class leakage taxonomy |
-| `md/04_FUNNEL.md` | Multi-stage funnel |
-| `md/05_OPERATORS.md` | Operator catalog |
-| `md/06_EXPERIENCE.md` | Experience memory |
-| `md/07_HPO.md` | HPO & model training |
-| `md/08_PARALLEL.md` | Parallel execution |
-| `md/09_PIPELINE.md` | Pipeline IR & export |
-| `md/10_CLI.md` | CLI design |
-| `md/11_SECURITY.md` | Security sandbox |
-| `md/12_TESTING.md` | Testing strategy |
-| `md/13_ROADMAP.md` | Roadmap |
-| `md/14_DESIGN_DECISIONS.md` | Design decisions |
-| `md/15_CANONICAL_PIPELINE.md` | 10-phase canonical pipeline |
+| `md/01_REQUIREMENTS_INVARIANTS.md` | Requirements & invariants |
+| `md/02_DATA_INTAKE_SCHEMA_PROFILING.md` | Data intake, schema & profiling |
+| `md/03_PROBLEM_VALIDATION_LEAKAGE.md` | Problem validation & 6-class leakage taxonomy |
+| `md/04_FEATURE_INTELLIGENCE_ENGINE.md` | Feature intelligence engine & funnel |
+| `md/05_TRANSFORMATION_ALGORITHM_CATALOG.md` | Transformation/operator catalog |
+| `md/06_EXPERIENCE_STORE_META_LEARNING.md` | Experience store & meta-learning |
+| `md/07_PROGRESSIVE_SEARCH_HPO_ENSEMBLES.md` | Progressive search, HPO & ensembles |
+| `md/08_PARALLEL_RESOURCE_SCHEDULER.md` | Parallel execution & resource scheduler |
+| `md/09_ARCHITECTURE_CODEGEN_VERIFICATION.md` | Architecture, codegen & verification gates |
+| `md/10_CLI_DASHBOARD_OBSERVABILITY.md` | CLI, dashboard & observability |
+| `md/11_SECURITY_PRIVACY_RELIABILITY.md` | Security, privacy & reliability |
+| `md/12_TESTING_BENCHMARKS_RESEARCH_GATES.md` | Testing, benchmarks & research gates |
+| `md/13_CORE_CONTRACTS_SCHEMAS.md` | Core contracts & schemas |
+| `md/14_REFERENCE_SYSTEM_RESEARCH.md` | Reference systems research |
+| `md/15_END_TO_END_ALGORITHM.md` | End-to-end canonical algorithm |
 
 ---
 

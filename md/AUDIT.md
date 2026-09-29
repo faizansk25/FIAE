@@ -49,6 +49,8 @@ Verified properties:
 | W-3 | 5 sites use broad `except Exception: pass` (cli.py ×2, cli_dashboard, events, experiment/tracking) | All are best-effort UI/telemetry paths; converting to narrow exceptions is safe cleanup, not urgent. |
 | W-4 | Float-coercion helpers duplicated ×4 (`_to_float_or_none`, `_to_floats`, `_to_floats_safe`, `_to_float_list`) | Small, locally-typed variants; unifying risks behavior drift in fitted-pipeline coercion. Consolidate opportunistically. |
 | W-5 | Global mutable state: none found at module scope. All shared state is instance-scoped behind `threading.Lock` (events bus, experience store) or process-global registries that are write-once. | — |
+| W-6 | `run_in_sandbox` timeout returns a timeout error but the runaway daemon thread remains alive (burning CPU until process exit). Proven by runtime probe (M30): `threading.active_count()` stays elevated after a 1s-timeout infinite loop. Fix: cooperative cancellation or documented boundary. | Open (M30) |
+| W-7 | `SandboxPolicy.max_memory_bytes` (256 MB) is declared but never enforced — single occurrence is the definition itself. README's security claim covers *validation* (proven), not OS-level memory containment (not claimed, not built). | Open (M30) |
 
 ## 3. Boundary rules now enforced by tests
 

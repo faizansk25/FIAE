@@ -1930,3 +1930,27 @@ Locked by `tests/test_cv_imbalanced.py` (5 tests).
 
 - Full suite: **1001 passed, 12 skipped** (997 → +4 net), 0 failures.
 - `ruff check`: clean. Example smoke: 10/10 phases, 0 errors.
+
+## M30 - 5W1H Framework Audit: Every Claim Interrogated
+
+WHO/WHAT/WHERE/WHEN/WHY/HOW applied to every subsystem with fresh evidence
+(`md/5W1H_AUDIT.md`). Runtime probes executed, not just code reads:
+
+- Sandbox timeout probe: runaway thread survives timeout (W-6 registered).
+- Memory-cap grep: `max_memory_bytes` never enforced (W-7 registered).
+- README link audit: all 16 design-doc references were WRONG filenames
+  (short-form names that never existed) — every link dead. **D-1 fixed**:
+  table rewritten to real files; script verifies all md/ + example links
+  resolve on disk.
+- Security validation re-proven live: hostile code (`os.system`,
+  `__import__`, `open`) flagged; good code passes; exceptions captured.
+- SQL adapter proven to actually connect+read (sqlite fixture, 30 rows).
+
+No code changes required for D-1 (docs only); W-6/W-7 registered in
+`AUDIT.md` for the security-hardening pass.
+
+### Verification
+
+- Full suite: **1013 passed, 0 skipped, 0 failed** (incl. 17 real-data).
+- README link checker: 0 missing.
+- CI: green through `115645a`.
