@@ -2053,3 +2053,30 @@ verification mechanism (doc 09).
 - Full suite: **1047 passed, 0 skipped, 0 failed** (+17 tests).
 - Example smoke: 10/10 phases, 0 errors, 11/11 gates incl. value parity.
 - `ruff check`: clean.
+
+## M34 - Real-World Usability Audit (installed-package testing) + Portfolio Honesty Fix
+
+**Setup flaw fixed (found by user's challenge)**: FIAE was never actually
+installed in the conda environment — all prior testing ran from src/ via
+sys.path. `pip install -e .` executed; `fia` console script verified working
+from the env's Scripts directory.
+
+**Full CLI feature walkthrough on installed package** (real Windows paths,
+not Git Bash /tmp): inspect, analyze, leakage, validate, learn, connect,
+optimize, pipeline+export (11/11 gates), JSON output, benchmarks, serve
+(HTTP 200, /api/jobs, /api/health respond), ui, banner, experience — all
+verified working. Error paths produce actionable tips (missing file,
+missing target).
+
+**Portfolio honesty fix**: `portfolio_size` previously counted members that
+FAILED F4/F6 verification (reported 3 when only 2 passed). Now counts only
+passing members; rejected members remain in the report with their FAIL
+badge. Verified on 300-row learnable dataset.
+
+**Non-issues verified (were test artifacts, not product flaws)**:
+- /tmp path confusion was a Git Bash vs Windows Python artifact
+- CWD independence verified: pipeline runs correctly from any directory
+- 12-row tiny-data portfolio=0 is correct conservative behavior (the
+  greedy probe measured negative gain for the weak dev ordering)
+- Categorical columns (city) correctly excluded from numeric candidate
+  generation in learn; available via funnel/probe on typed paths

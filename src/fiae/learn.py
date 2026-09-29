@@ -511,7 +511,12 @@ def learn(source, target, *, config=None):
         report.portfolio.append(PortfolioMember.from_record(rec))
 
     report.total_time_s = time.monotonic() - t0
-    _write_experience_case(report, cfg, success=bool(report.portfolio))
+    # Portfolio honesty (M33): portfolio_size must count only members that
+    # passed F4+F6 verification, not rejected ones still carried for the
+    # report. The experience case records success on passing members only.
+    passed_members = [m for m in report.portfolio if m.f4_passed and m.f6_passed]
+    report.portfolio_size = len(passed_members)
+    _write_experience_case(report, cfg, success=bool(passed_members))
     if tracker is not None:
         metrics = {
             "rows": report.rows_in_source,
