@@ -120,15 +120,26 @@ def _get_sklearn_model(family: str, params: dict[str, Any]):
 
 def _evaluate_cv(model, X, y, task: str, n_folds: int = 5, seed: int = 42) -> dict[str, float]:
     """Cross-validate a model and return metrics."""
-    from sklearn.model_selection import cross_val_score, KFold
+    from collections import Counter
+    from sklearn.model_selection import (
+        StratifiedKFold,
+        cross_val_score,
+        KFold,
+    )
     import numpy as np
-
-    kf = KFold(n_splits=min(n_folds, max(2, len(y) // 2)), shuffle=True, random_state=seed)
 
     if task == "classification":
         scoring = "roc_auc" if len(set(y)) == 2 else "accuracy"
+        # Stratify so every fold has both classes (imbalanced data would
+        # otherwise yield folds with a single class -> undefined ROC-AUC).
+        n_splits = min(n_folds, max(2, len(set(y))), min(Counter(y).values()))
+        kf = StratifiedKFold(
+            n_splits=max(2, n_splits), shuffle=True, random_state=seed
+        )
     else:
         scoring = "neg_mean_squared_error"
+        kf = KFold(n_splits=min(n_folds, max(2, len(y) // 2)), shuffle=True,
+                   random_state=seed)
 
     try:
         scores = cross_val_score(model, X, y, cv=kf, scoring=scoring)

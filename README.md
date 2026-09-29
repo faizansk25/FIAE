@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1000%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1009%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -64,7 +64,7 @@ Feature engineering is the highest-leverage step in machine learning — and the
 
 Existing tools focus on **coverage** (how many features can I generate?) or **speed** (how fast can I search?). FIAE is the first tool to focus on **correctness** — proving that every generated feature is:
 
-1. **Leakage-free** — validated against a 6-class leakage taxonomy (L0–L5)
+1. **Leakage-free** — screened against a 6-class leakage taxonomy (L0–L5). The detectors catch known leakage patterns (deterministic bijections, extreme mutual information, target-derived features); no tool can *guarantee* the absence of leakage, so FIAE surfaces evidence and lets you review borderline features (L5) instead of silently passing them.
 2. **Stable** — passes multi-seed cross-validation (F6 gate)
 3. **Complementary** — not redundant with existing features (F5 gate)
 4. **Verified** — exported pipeline passes 11 automated verification gates (including operator-coverage and row-level feature parity)
@@ -72,16 +72,17 @@ Existing tools focus on **coverage** (how many features can I generate?) or **sp
 
 FIAE is built for **production ML systems where correctness matters more than speed** — healthcare, finance, autonomous systems, and any domain where a silent bug has real consequences.
 
-### Proven end-to-end (v0.0.2)
+### Proven end-to-end (v0.1.0)
 
-On a 400-row synthetic churn dataset, the full canonical 10-phase pipeline — intake → profile → validate → split → generate → funnel → train 4 model families with 5-fold CV → ensemble → evaluate → verified export — completes in ~5 seconds:
+On a 400-row synthetic churn dataset, the full canonical 10-phase pipeline — intake → profile → validate → split → generate → funnel → train 4 model families with stratified 5-fold CV → ensemble → evaluate → verified export — completes in ~8 seconds:
 
 | Stage | Measured result |
 |---|---|
-| Funnel | 17 proposals → 15 pass F2 materialization → 4-feature portfolio (F5-deconflicted) |
-| Model selection (HPO) | 4 families trained with real 5-fold CV; random forest promoted at **ROC-AUC 0.713** — beating the 0.691 raw-input baseline |
-| Evaluation | fold-std 0.059, generalization-gap estimate 0.030, calibration valid |
-| Export | **11/11 verification gates pass**, including row-level feature parity between runtime and exported code |
+| Generation | 665 proposals → 200 unique after dedup |
+| Funnel | 27 pass F0 → 23 pass F1 → 21 pass F2 → 4-feature portfolio (F5-deconflicted) |
+| Model selection (HPO) | 4 families trained with real stratified 5-fold CV; logistic regression promoted at **ROC-AUC 0.763** (fold-std 0.005) |
+| Evaluation | fold-std 0.005, generalization-gap estimate 0.002, calibration valid |
+| Export | **11/11 verification gates pass**, including feature parity between runtime and exported code |
 | Determinism | md5 feature bucketing + seeded CV; identical inputs → identical pipeline IDs, hashes, and exports |
 
 Run it yourself in under a minute: `python examples/churn/run_api.py` (no credentials, no GPU, CPU-only).
@@ -95,7 +96,7 @@ Run it yourself in under a minute: `python examples/churn/run_api.py` (no creden
 | **6-class leakage taxonomy** (L0–L5) | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ |
 | **Cross-dataset experience memory** | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ |
 | **Complementarity-aware selection** (F5) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
-| **Verified pipeline export** (11 gates incl. row-level parity) | ✅ | ❌ | ❌ | ⚠️ | ❌ | ❌ |
+| **Verified pipeline export** (11 gates incl. parity checks) | ✅ | ❌ | ❌ | ⚠️ | ❌ | ❌ |
 | **Runtime security enforcement** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Fitted-state pipeline** (fit/transform) | ✅ | ❌ | ❌ | ❌ | ⚠️ | ❌ |
 | **Deterministic exports** (md5 feature bucketing, seeded CV) | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
@@ -147,7 +148,7 @@ Real-time progress bars with ETA for downloads and data processing:
 Cross-dataset experience store with R0–R3 retrieval for intelligent feature hints.
 
 ### 📦 Verified Pipeline Export
-Export to standalone sklearn projects with 11 automated verification gates — including row-level feature parity between the fitted runtime and the exported code.
+Export to standalone sklearn projects with 11 automated verification gates — including feature parity between the fitted runtime and the exported code.
 
 ---
 
@@ -262,6 +263,15 @@ FIAE follows a strict dependency policy — **core imports require zero third-pa
 | **Dev** | `pytest>=7.0` | Test suite |
 
 > **Dependency policy:** Core imports require zero third-party packages (NFR-002). Every heavy capability is behind an optional tier gate.
+
+### Hardware & resource adaptivity
+
+FIAE is designed to degrade gracefully across hardware — the same commands run on a low-end laptop and a high-core workstation:
+
+- **CPU**: profiling parallelizes per-column with `min(8, os.cpu_count())` worker threads; orchestration workers and server worker pools default to 4 and are configurable (`--max-workers`, scheduler options). Tier-2 gradient boosting (LightGBM/XGBoost/CatBoost) accepts vendor-native thread/GPU configuration via their own parameters. There is **no GPU-specific path in FIAE itself** — it is a CPU-first tool; GPUs only help through tier-2 backends that expose GPU support.
+- **Memory**: streaming, chunked intake (`--chunk-size`, default 2048 rows) keeps RAM flat on large files; a hard row cap (`--max-rows`) bounds worst-case work; the security layer enforces per-run memory estimates (`max_ram_mb`) and sandbox limits (default 256 MB for generated-code execution).
+- **AMD / Intel / Apple Silicon**: FIAE is pure Python (stdlib core) — no CPU-vendor-specific code paths. Wheels are built and verified on Linux, Windows, and macOS (x86_64 + arm64) by the release workflow, so the same wheel runs on Intel, AMD, Apple Silicon, and Raspberry-Pi-class hardware (Python 3.10+ required).
+- **Tiny datasets**: stratified cross-validation keeps model training correct on small/imbalanced data even when folds are tight.
 
 ```bash
 # Core only (zero dependencies)
@@ -745,7 +755,7 @@ python examples/churn/run_api.py
 | **Security** | `test_security*.py` | 15 | Resource limits, input validation, audit logging |
 | **Misc** | `test_m*.py` | 200+ | Milestone integration tests (M3–M13) |
 | **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | 110+ | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
-| **Total** | **45 files** | **1000** | |
+| **Total** | **53 files** | **1009** | |
 
 ---
 
@@ -794,7 +804,7 @@ fiae/
 │   ├── search/                 # Feature search
 │   ├── security/               # Security
 │   └── testing/                # Testing
-├── tests/                      # Test suite (1000 tests)
+├── tests/                      # Test suite (1009 tests)
 ├── pyproject.toml              # Build config & dependencies
 ├── conftest.py                 # Test infrastructure
 ├── README.md                   # This file
@@ -827,7 +837,7 @@ fiae/
 - [x] Bounded-concurrency REST server: worker pool, 429 backpressure,
       per-client rate limiting, load-tested with 200 simultaneous clients
 - [x] `fiae connect` universal source connector
-- [x] 1000 passing tests, incl. property-based & adversarial suites
+- [x] 1009 passing tests, incl. property-based & adversarial suites
 - [x] Real-data validation on 20-type 100K-row dataset
 
 ### Planned

@@ -50,7 +50,7 @@ def generate_dataset(path: str, n_rows: int = 400, seed: int = 42) -> str:
                 + (0.5 if plan == "premium" else 0.0)
                 + 0.3 * math.log1p(fee)
             )
-            churn = 1 if rng.random() < 1 / (1 + math.exp(-logit)) else 0
+            churn = 1 if rng.random() < 1 / (1 + math.exp(-(logit - 2.4))) else 0
             w.writerow([f"CUST-{i:05d}", tenure, fee, tickets, minutes,
                         city, plan, churn])
     return path
