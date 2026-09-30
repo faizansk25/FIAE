@@ -407,9 +407,15 @@ def learn(source, target, *, config=None):
     report.proposals_after_dedup = len(proposals)
 
     sample = {}
+    cat_names = set(categorical_cols)
     for col in profile.columns:
         if col.name in all_col_data:
             raw = all_col_data[col.name][:cfg.sample_rows]
+            if col.name in cat_names:
+                # P0-1 (M36): categorical columns keep raw string values so
+                # hash_encode sees categories, not coerced-None garbage.
+                sample[col.name] = list(raw)
+                continue
             # Convert to floats for transforms that expect numerics.
             # Native numerics (SQL/DataFrame adapters) pass through.
             converted = []
@@ -424,6 +430,38 @@ def learn(source, target, *, config=None):
                     converted.append(None)
             sample[col.name] = converted
 
+    # P0-2 (M36): run the real Stage A/B leakage detectors on the default
+    # path. Hard-rejected columns are dropped from proposal inputs so a
+    # target copy / bijective encode can never enter the funnel.
+    try:
+        from .problem.leakage import detect_deterministic, statistical_triage
+        hard_rejected = set()
+        leakage_flags = []
+        for name in list(sample):
+            if name == target:
+                continue
+            finding = detect_deterministic(
+                sample[name], target_raw, feature_name=name, target_name=target)
+            if finding is None:
+                finding = statistical_triage(
+                    sample[name], target_raw, feature_name=name, target_name=target)
+            if finding is not None and finding.action == "reject":
+                hard_rejected.add(name)
+                leakage_flags.append({
+                    "column": name,
+                    "type": finding.finding_id,
+                    "severity": str(finding.severity),
+                })
+        if hard_rejected:
+            proposals = [p for p in proposals if not (
+                set(p.inputs) & {"raw:" + c for c in hard_rejected})]
+            report.proposals_after_dedup = len(proposals)
+    except Exception:
+        # Detection is best-effort here; the canonical pipeline still runs
+        # the full detector set (fail-open, never blocks learn).
+        hard_rejected = set()
+        leakage_flags = []
+
     # Phase 6: Funnel F0-F2
     funnel_passed = []
     for proposal in proposals:
@@ -437,8 +475,20 @@ def learn(source, target, *, config=None):
     from .fitted_pipeline import FittedPipeline
     fitted_pipe = FittedPipeline()
     surviving_proposals = [p for p, r in funnel_passed]
-    # Use float-converted sample for materialization
-    candidate_outputs = fitted_pipe.fit(surviving_proposals, sample)
+    # P0-3 (M36) holdout discipline: L1 fit states are learned on DEV rows
+    # only. The final holdout reserved in Phase 3 must not influence any
+    # fitted transform, so its rows are withheld from fit and only used
+    # (transform-only) later for untouched evaluation.
+    sample_n = len(next(iter(sample.values()))) if sample else 0
+    dev_positions = [i for i in split_spec.dev_indexes if i < sample_n]
+    if not dev_positions:
+        # Degenerate guard: profiled sample smaller than the holdout.
+        dev_positions = list(range(sample_n))
+    dev_sample = {
+        name: [vals[i] for i in dev_positions]
+        for name, vals in sample.items()
+    }
+    candidate_outputs = fitted_pipe.fit(surviving_proposals, dev_sample)
 
     # Phase 8: Portfolio selection
     if not candidate_outputs:
@@ -450,19 +500,10 @@ def learn(source, target, *, config=None):
                                  "total_time_s": report.total_time_s})
             tracker.finish()
         return report
-    # Holdout discipline (doc 03): the final holdout reserved in Phase 3 is
-    # never used for feature selection or stability evaluation. Restrict the
-    # probe/F4/F6 evaluation rows to dev (non-holdout) positions.
-    sample_n = len(next(iter(candidate_outputs.values())))
-    dev_rows = [i for i in split_spec.dev_indexes if i < sample_n]
-    if not dev_rows:
-        # Degenerate guard: profiled sample smaller than the holdout.
-        dev_rows = list(range(sample_n))
-    y_probe = [y_all[i] for i in dev_rows]
-    dev_outputs = {
-        name: [vals[i] for i in dev_rows]
-        for name, vals in candidate_outputs.items()
-    }
+    # Holdout discipline (doc 03): evaluation rows are dev rows (same
+    # positions the fit states were learned on — full dev, no holdout).
+    y_probe = [y_all[i] for i in dev_positions]
+    dev_outputs = candidate_outputs
     selected_names, gains = select_portfolio(
         dev_outputs, y_probe, inference.task,
         cfg.probe_policy, max_features=cfg.max_portfolio_features)

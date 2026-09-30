@@ -14,7 +14,7 @@ from __future__ import annotations
 import math
 import random
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Any, Callable, Optional
 
 from ..model_registry import HPDimension
 
@@ -144,11 +144,17 @@ def successive_halving(
     reduction_factor: int = 3,
     seed: int = 42,
     maximize: bool = False,
+    resource: Optional[Callable[[dict, int], float]] = None,
 ) -> HPOResult:
     """Successive halving: allocate resources progressively, prune worst (doc 07).
 
     Starts with n_initial cheap trials, keeps top 1/reduction_factor,
     increases budget, repeat until one remains.
+
+    M36: pass ``resource`` (a callable ``(params, budget) -> score``) to make
+    stages genuinely budget-aware — each stage trains with ``budget`` rows
+    (or epochs), so later stages see progressively more data. Without it the
+    objective is resource-agnostic and stages differ in config count only.
     """
     rng = random.Random(seed)
     all_trials = []
@@ -162,7 +168,10 @@ def successive_halving(
         stage_trials = []
         for i, params in enumerate(configs):
             try:
-                score = objective(params)
+                if resource is not None:
+                    score = resource(params, (reduction_factor ** stage))
+                else:
+                    score = objective(params)
             except Exception:
                 score = float("-inf") if maximize else float("inf")
             trial = HPOTrial(

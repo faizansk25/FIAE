@@ -80,6 +80,12 @@ def _cv_metric(
     lam: float,
 ) -> float:
     errs: list[float] = []
+    # M36: multiclass targets use one-vs-rest Brier per class instead of the
+    # meaningless "Brier on the raw class index".
+    n_classes = sorted({int(v) for v in y}) if task is Task.MULTICLASS else None
+    ovr: dict[int, list[float]] = ({
+        c: [1.0 if int(v) == c else 0.0 for v in y] for c in n_classes
+    } if n_classes else {})
     for train, val in folds:
         if not train or not val:
             continue
@@ -89,8 +95,14 @@ def _cv_metric(
             continue
         pred = [sum(wi * xi for wi, xi in zip(w, row))
                 for row in _design(columns, val)]
-        f = _rmse if task is Task.REGRESSION else _brier
-        errs.append(f(pred, y, val))
+        if ovr:
+            per_class = [
+                _brier(pred, ovr[c], val) for c in n_classes
+            ]
+            errs.append(sum(per_class) / len(per_class))
+        else:
+            f = _rmse if task is Task.REGRESSION else _brier
+            errs.append(f(pred, y, val))
     return sum(errs) / len(errs) if errs else float("inf")
 
 

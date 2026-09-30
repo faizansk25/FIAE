@@ -142,10 +142,22 @@ def reserve_final_holdout(
     *,
     y: Optional[list[Any]] = None,
     group_ids: Optional[list[Any]] = None,
+    times: Optional[list[Any]] = None,
     holdout_fraction: float = 0.2,
     seed: int = 0,
 ) -> tuple[list[int], list[int]]:
-    """Reserve a final untouched holdout BEFORE any fitted preprocessing (doc 03)."""
+    """Reserve a final untouched holdout BEFORE any fitted preprocessing (doc 03).
+
+    When ``times`` is provided the holdout is the chronologically LAST rows
+    (no shuffling) so prediction-time discipline holds for temporal data.
+    """
+    if times is not None:
+        n_hold = max(1, round(n * holdout_fraction))
+        n_hold = min(n_hold, max(1, n - 1))
+        order = sorted(range(n), key=lambda i: times[i])
+        hold = sorted(order[n - n_hold:])
+        dev = [i for i in range(n) if i not in set(hold)]
+        return sorted(dev), hold
     rng = random.Random(seed)
     n_hold = max(1, round(n * holdout_fraction))
     if n_hold >= n:
@@ -229,7 +241,8 @@ def make_splits(
     )
 
     dev, hold = reserve_final_holdout(
-        n, y=y, group_ids=group_ids, holdout_fraction=holdout_fraction, seed=seed
+        n, y=y, group_ids=group_ids, times=times,
+        holdout_fraction=holdout_fraction, seed=seed
     )
     y_dev = None if y is None else [y[i] for i in dev]
     g_dev = None if group_ids is None else [group_ids[i] for i in dev]
