@@ -5,9 +5,9 @@ design principles — reading this guide first will save us both a review round.
 
 ## Ground Rules (non-negotiable)
 
-1. **Read the design documents** (`md/00–15`) — every change must be
-   normatively grounded in a design document. If your change isn't covered,
-   propose a design-doc update in the same PR.
+1. **Ground every change in the design principles** — the five rules
+   below are the contract. If your change introduces a new behavioral
+   contract, describe it in the PR (tests are the executable spec).
 2. **Zero third-party dependencies in core** (`src/fiae` imports stdlib only).
    Heavy capabilities belong behind the `tier1`/`tier2` optional extras.
 3. **Every operator ships with typed contracts** — input types, output type,
@@ -41,7 +41,8 @@ If any of the three fails locally, CI will fail too — fix before opening the P
 Every PR must include:
 
 - **What & why** — one sentence each
-- **Design-doc reference** — which `md/` document governs the change
+- **Design rationale** — which principle above governs the change, or
+  why a new principle is needed
 - **Risk label** — `risk:low` (docs/tests), `risk:medium` (features),
   `risk:high` (funnel, leakage, export, security paths)
 - **Evidence** — paste test output showing the suite green

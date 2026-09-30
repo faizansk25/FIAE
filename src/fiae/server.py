@@ -39,7 +39,9 @@ from collections import deque
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from typing import Any, Callable, Optional
 
-__version__ = "0.0.1"
+from . import __version__ as _pkg_version
+
+__version__ = _pkg_version
 _MAX_RUN_NAME_LEN = 128
 
 

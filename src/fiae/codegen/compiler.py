@@ -480,7 +480,7 @@ def generate_sklearn_project(ir: PipelineIR, output_dir: str = "project") -> dic
     # pyproject.toml
     files["pyproject.toml"] = '''[build-system]
 requires = ["setuptools>=68"]
-build-backend = "setuptools.backends._legacy:_Backend"
+build-backend = "setuptools.build_meta"
 
 [project]
 name = "fiae-export"

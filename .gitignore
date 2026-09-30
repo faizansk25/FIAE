@@ -60,3 +60,8 @@ pytest_err.txt
 src/fiae/*.c
 src/fiae/**/*.c
 tools/import_graph.json
+
+# Local-only internal docs (M35): design docs, audits, progress reports.
+# Kept on disk, not published to GitHub.
+/md/
+/AGENTS.md

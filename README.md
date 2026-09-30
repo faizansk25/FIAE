@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1013%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1047%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -41,7 +41,6 @@
   - [Fitted-State Pipeline](#fitted-state-pipeline)
 - [Operator Catalog](#operator-catalog)
 - [Model Registry](#model-registry)
-- [Design Documents](#design-documents)
 - [Development](#development)
 - [Testing](#testing)
 - [Project Structure](#project-structure)
@@ -244,8 +243,30 @@ pip install -e ".[dev,tier1]"
 pip install -e ".[dev,tier1,tier2]"
 ```
 
-> **PyPI release:** FIAE is not yet published as an official PyPI
-> package. Install directly from source until the first public release.
+### With conda (recommended on Windows)
+
+Conda is the easiest path on Windows: the activated environment puts the
+`fiae` command on PATH for CMD, PowerShell, and Git Bash (MINGW64).
+
+```bash
+# 1. Create and activate an environment (Python 3.10+)
+conda create -n fia python=3.11
+conda activate fia
+
+# 2. Install FIAE from source (inside the activated env)
+git clone https://github.com/faizansk25/FIAE.git
+cd FIAE
+pip install -e ".[dev,tier1]"
+
+# 3. Done — the `fiae` command now works everywhere
+fiae
+fiae inspect data.csv
+fiae learn data.csv --target y
+```
+
+<details>
+<summary><b>Git Bash (MINGW64) notes</b></summary>
+<arg_value><b88a6f17>
 >
 > When it ships, the wheel will install even without a C compiler —
 > Cython acceleration is an optional optimization, auto-skipped when no
@@ -658,31 +679,6 @@ FIAE exports pipelines with fit/transform lifecycle:
 
 ---
 
-## Design Documents
-
-FIAE is built on 16 design documents (md/00–15):
-
-| Document | Title |
-|---|---|
-| `md/00_MASTER_BLUEPRINT.md` | Master blueprint & 15 hard principles |
-| `md/01_REQUIREMENTS_INVARIANTS.md` | Requirements & invariants |
-| `md/02_DATA_INTAKE_SCHEMA_PROFILING.md` | Data intake, schema & profiling |
-| `md/03_PROBLEM_VALIDATION_LEAKAGE.md` | Problem validation & 6-class leakage taxonomy |
-| `md/04_FEATURE_INTELLIGENCE_ENGINE.md` | Feature intelligence engine & funnel |
-| `md/05_TRANSFORMATION_ALGORITHM_CATALOG.md` | Transformation/operator catalog |
-| `md/06_EXPERIENCE_STORE_META_LEARNING.md` | Experience store & meta-learning |
-| `md/07_PROGRESSIVE_SEARCH_HPO_ENSEMBLES.md` | Progressive search, HPO & ensembles |
-| `md/08_PARALLEL_RESOURCE_SCHEDULER.md` | Parallel execution & resource scheduler |
-| `md/09_ARCHITECTURE_CODEGEN_VERIFICATION.md` | Architecture, codegen & verification gates |
-| `md/10_CLI_DASHBOARD_OBSERVABILITY.md` | CLI, dashboard & observability |
-| `md/11_SECURITY_PRIVACY_RELIABILITY.md` | Security, privacy & reliability |
-| `md/12_TESTING_BENCHMARKS_RESEARCH_GATES.md` | Testing, benchmarks & research gates |
-| `md/13_CORE_CONTRACTS_SCHEMAS.md` | Core contracts & schemas |
-| `md/14_REFERENCE_SYSTEM_RESEARCH.md` | Reference systems research |
-| `md/15_END_TO_END_ALGORITHM.md` | End-to-end canonical algorithm |
-
----
-
 ## Development
 
 ### Running tests
@@ -755,7 +751,7 @@ python examples/churn/run_api.py
 | **Security** | `test_security*.py` | 15 | Resource limits, input validation, audit logging |
 | **Misc** | `test_m*.py` | 200+ | Milestone integration tests (M3–M13) |
 | **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | 110+ | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
-| **Total** | **53 files** | **1013** | |
+| **Total** | **53 files** | **1047** | |
 
 ---
 
@@ -764,7 +760,6 @@ python examples/churn/run_api.py
 ```
 fiae/
 ├── logo.svg                    # Adaptive brand logo (light/dark)
-├── md/                         # 16 design documents (00–15) + navigation
 ├── src/fiae/                   # Source package
 │   ├── __init__.py             # Package init
 │   ├── __main__.py             # CLI entry point
@@ -804,7 +799,7 @@ fiae/
 │   ├── search/                 # Feature search
 │   ├── security/               # Security
 │   └── testing/                # Testing
-├── tests/                      # Test suite (1013 tests)
+├── tests/                      # Test suite (1047 tests)
 ├── pyproject.toml              # Build config & dependencies
 ├── conftest.py                 # Test infrastructure
 ├── README.md                   # This file
@@ -837,7 +832,7 @@ fiae/
 - [x] Bounded-concurrency REST server: worker pool, 429 backpressure,
       per-client rate limiting, load-tested with 200 simultaneous clients
 - [x] `fiae connect` universal source connector
-- [x] 1013 passing tests, incl. property-based & adversarial suites
+- [x] 1047 passing tests, incl. property-based & adversarial suites
 - [x] Real-data validation on 20-type 100K-row dataset
 
 ### Planned
@@ -857,13 +852,13 @@ fiae/
 
 FIAE follows strict design principles. Before contributing:
 
-1. **Read the design documents** — changes must be normatively grounded
+1. **Ground every change in the design principles** — see the Contributing section
 2. **Zero third-party deps in core** — heavy capabilities go in optional tiers
 3. **Every operator must have typed contracts** — input types, output type, leakage class, fit scope
 4. **All transforms must be deterministic** — same input → same output, always
 5. **Tests are mandatory** — no operator ships without passing its contract tests
 
-See `md/00_MASTER_BLUEPRINT.md` for the 15 hard principles.
+The five hard principles above are the contract.
 
 Full setup instructions, the pre-PR command loop, and the PR policy
 (design-doc reference + risk label + test evidence) live in

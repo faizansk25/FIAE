@@ -7,11 +7,11 @@
 - **What:**
 - **Why:**
 
-## Design-Document Reference
+## Design Rationale
 
-<!-- Which md/ document (00–15) governs this change? Link or quote the normative section. -->
+<!-- Which design principle (see CONTRIBUTING.md) governs this change? -->
 
-- Document:
+- Principle:
 
 ## Risk Label
 
@@ -41,4 +41,4 @@ $ python examples/churn/run_api.py
 - [ ] Zero third-party imports added to core (`src/fiae`)
 - [ ] New/changed behavior covered by tests (regression test for every bug fix)
 - [ ] Deterministic: no wall-clock or unseeded randomness in analysis paths
-- [ ] Docs updated (`README.md` and/or relevant `md/` document) if user-facing
+- [ ] Docs updated (`README.md` and/or CONTRIBUTING.md) if user-facing

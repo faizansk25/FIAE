@@ -4,6 +4,10 @@ Every file path referenced in README.md must exist on disk, and the
 headline count badges must match reality.  If this test fails, either
 README.md drifted from the repository or the referenced artifact was
 removed — fix whichever is wrong, never weaken the check.
+
+Note: the design documents (md/) are intentionally *not* tracked in the
+public repository (M35), so README no longer references them and there is
+no design-doc count claim to verify.
 """
 
 import os
@@ -19,12 +23,13 @@ def _readme() -> str:
 
 
 class TestReadmeFileReferences:
-    def test_all_md_references_exist(self):
+    def test_readme_does_not_reference_untracked_md_docs(self):
         readme = _readme()
-        refs = set(re.findall(r"md/([A-Za-z0-9_.]+\.md)", readme))
-        assert refs, "README must reference the design documents"
-        missing = [r for r in refs if not os.path.exists(os.path.join(_ROOT, "md", r))]
-        assert missing == [], f"README references missing docs: {missing}"
+        refs = re.findall(r"md/([A-Za-z0-9_.]+\.md)", readme)
+        assert refs == [], (
+            "README must not reference md/ documents — they are local-only "
+            f"(not in the public repo) since M35; found: {sorted(set(refs))}"
+        )
 
     def test_all_repo_path_references_exist(self):
         readme = _readme()
@@ -57,16 +62,3 @@ class TestReadmeCountClaims:
             assert abs(collected - badge) <= 15, (
                 f"README badge says {badge} tests, pytest collected {collected}"
             )
-
-    def test_design_doc_count_claim_matches_disk(self):
-        readme = _readme()
-        m = re.search(r"built on (\d+) design documents", readme)
-        assert m, "design-doc count claim missing"
-        claimed = int(m.group(1))
-        actual = len([
-            f for f in os.listdir(os.path.join(_ROOT, "md"))
-            if re.match(r"^\d{2}_.*\.md$", f) and not f.startswith("99_")
-        ])
-        assert claimed == actual, (
-            f"README claims {claimed} design documents; disk has {actual}"
-        )

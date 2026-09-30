@@ -43,7 +43,7 @@ dependencies = []
 Homepage = "https://github.com/faizansk25/FIAE"
 Repository = "https://github.com/faizansk25/FIAE"
 Issues = "https://github.com/faizansk25/FIAE/issues"
-Changelog = "https://github.com/faizansk25/FIAE/blob/main/md/PROGRESS_REPORT.md"
+Changelog = "https://github.com/faizansk25/FIAE/releases"
 
 [project.scripts]
 fiae = "fiae.cli:main"

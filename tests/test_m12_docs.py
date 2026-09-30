@@ -358,6 +358,17 @@ class TestCompiler:
         assert "README.md" in files
         assert "artifacts/manifest.json" in files
 
+    def test_export_pyproject_uses_supported_build_backend(self):
+        """M35 regression: exported projects must use a real PEP 517 backend.
+
+        ``setuptools.backends._legacy:_Backend`` does not exist; a generated
+        project with that string cannot be pip-installed.
+        """
+        ir = _make_simple_ir()
+        files = generate_sklearn_project(ir)
+        assert 'build-backend = "setuptools.build_meta"' in files["pyproject.toml"]
+        assert "_legacy:_Backend" not in files["pyproject.toml"]
+
 
 # ---------------------------------------------------------------------------
 # Doc 10: CLI commands

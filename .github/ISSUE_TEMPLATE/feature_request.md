@@ -12,13 +12,13 @@ labels: enhancement
 
 <!-- What should happen? Be concrete: command, API, output shape. -->
 
-## Design-Document Fit
+## Design Fit
 
-<!-- FIAE changes must be normatively grounded. Which design document
-     (md/00–15) covers this? If none, should a new design doc be proposed? -->
+<!-- FIAE changes follow the project's design principles (see CONTRIBUTING.md).
+     Which principle applies? If none, explain why the feature still fits. -->
 
-- Document:
-- Fit (quote or summarize the relevant principle):
+- Principle:
+- Fit:
 
 ## Alternatives Considered
 
