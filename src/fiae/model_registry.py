@@ -9,6 +9,7 @@ Normative source: doc 07 section "Model routing table".
 
 from __future__ import annotations
 
+import dataclasses
 import enum
 from dataclasses import dataclass, field
 from typing import Any, Optional
@@ -249,8 +250,12 @@ def route_model(
 
     Returns a ranked list of candidates (best first) from the routing table.
     This is the core of doc 07's model routing.
+
+    M38 (external audit): the returned specs are context-adjusted COPIES.
+    Mutating the global ROUTING_TABLE entries made one dataset's routing
+    permanently influence routing for the next dataset in the same process.
     """
-    candidates = available_families()
+    candidates = [dataclasses.replace(s) for s in available_families()]
 
     # Filter by task compatibility
     task_lower = task.lower()

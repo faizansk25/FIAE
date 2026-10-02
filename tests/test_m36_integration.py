@@ -105,7 +105,7 @@ class TestP0_3_FitOnDevOnly:
 
 
 class TestP0_4_OptimizeRunsRealHPO:
-    def test_optimize_runs_successive_halving(self, tmp_path):
+    def test_optimize_runs_successive_halving(self, tmp_path, monkeypatch):
         from fiae.cli_pipeline import cmd_optimize
         from fiae.orchestration.model_training import _evaluate_cv  # noqa: F401
 
@@ -118,16 +118,30 @@ class TestP0_4_OptimizeRunsRealHPO:
 
         import io
         from contextlib import redirect_stdout
+        # Adversarial (M37): spy on TrialRunner.run_trial so a regression that
+        # fabricates the HPO dict without training any model fails this test.
+        from fiae.orchestration.model_training import TrialRunner
+        real_run_trial = TrialRunner.run_trial
+        trials_run = []
+
+        def spy_run_trial(self, spec, X, y, task):
+            trials_run.append(spec.hyperparameters)
+            return real_run_trial(self, spec, X, y, task)
+
+        monkeypatch.setattr(TrialRunner, "run_trial", spy_run_trial)
         buf = io.StringIO()
         with redirect_stdout(buf):
             rc = cmd_optimize(A())
         assert rc == 0
+        assert trials_run, "no model was ever trained — HPO result is fabricated"
         import json
         out = buf.getvalue()
         payload = json.loads(out[out.find("{"):])
         hpo = payload.get("hpo") or {}
         # Real HPO ran: multiple trials, a finite best score, real params.
         assert hpo.get("n_trials", 0) >= 9
+        assert len(trials_run) >= hpo.get("n_trials", 0), (
+            "reported trials exceed models actually trained")
         assert isinstance(hpo.get("best_score"), (int, float))
         assert hpo.get("best_params"), "no hyperparameters searched"
         assert hpo.get("features"), "HPO did not use learned portfolio features"

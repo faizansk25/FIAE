@@ -29,6 +29,7 @@ Security model (doc 11):
 
 from __future__ import annotations
 
+import html
 import json
 import os
 import queue
@@ -104,14 +105,18 @@ class JobRegistry:
             self._prune_locked()
 
     def _prune_locked(self) -> None:
-        """Drop oldest COMPLETED jobs beyond the retention limit."""
-        completed = [jid for jid, j in self._jobs.items()
-                     if j["state"] == "COMPLETED"]
-        excess = len(completed) - self._max_completed
+        """Drop oldest terminal jobs beyond the retention limit.
+
+        M38 (external audit): FAILED is terminal too — pruning only
+        COMPLETED meant repeated failures grew the registry unboundedly.
+        """
+        terminal = [jid for jid, j in self._jobs.items()
+                    if j["state"] in ("COMPLETED", "FAILED")]
+        excess = len(terminal) - self._max_completed
         if excess <= 0:
             return
         # dict preserves insertion order → oldest first
-        for jid in completed[:excess]:
+        for jid in terminal[:excess]:
             del self._jobs[jid]
 
     def get(self, job_id: str) -> Optional[dict]:
@@ -638,20 +643,23 @@ def make_handler(
             jobs = registry.list()
             pstats = pool.stats()
             jstats = registry.stats()
+            # M38 (external audit): every dynamic value is HTML-escaped —
+            # target/params come from API input, so raw interpolation was a
+            # stored-XSS route into the dashboard.
             rows = "".join(
-                f"<tr><td><code>{r['run_id']}</code></td>"
-                f"<td><span class='badge {r['state'].lower()}'>"
-                f"{r['state']}</span></td>"
-                f"<td>{r.get('params', {}).get('target', '-')}</td>"
-                f"<td>{r.get('params', {}).get('max_rows', '-')}</td></tr>"
+                f"<tr><td><code>{html.escape(str(r['run_id']))}</code></td>"
+                f"<td><span class='badge {html.escape(str(r['state'].lower()))}'>"
+                f"{html.escape(str(r['state']))}</span></td>"
+                f"<td>{html.escape(str(r.get('params', {}).get('target', '-')))}</td>"
+                f"<td>{html.escape(str(r.get('params', {}).get('max_rows', '-')))}</td></tr>"
                 for r in runs) or "<tr><td colspan=4>No runs yet</td></tr>"
             jrows = "".join(
-                f"<tr><td><code>{j['job_id']}</code></td>"
-                f"<td><span class='badge {j['state'].lower()}'>"
-                f"{j['state']}</span></td>"
-                f"<td>{j['params'].get('target', '-')}</td></tr>"
+                f"<tr><td><code>{html.escape(str(j['job_id']))}</code></td>"
+                f"<td><span class='badge {html.escape(str(j['state'].lower()))}'>"
+                f"{html.escape(str(j['state']))}</span></td>"
+                f"<td>{html.escape(str(j['params'].get('target', '-')))}</td></tr>"
                 for j in jobs) or "<tr><td colspan=3>No jobs yet</td></tr>"
-            html = f"""<!DOCTYPE html>
+            page = f"""<!DOCTYPE html>
 <html><head><meta charset="utf-8"><title>FIAE Dashboard</title>
 <style>
 body{{font-family:Segoe UI,sans-serif;background:#0d1117;color:#e6edf3;
@@ -686,7 +694,7 @@ footer{{margin-top:3rem;color:#6e7681;font-size:.8rem}}
 <footer>API: /api/health · /api/runs · /api/jobs · POST /api/learn ·
 POST /api/profile · <a href="/gui" style="color:#a78bfa">Open GUI</a></footer>
 </body></html>"""
-            body = html.encode()
+            body = page.encode()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))

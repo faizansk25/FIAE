@@ -32,7 +32,6 @@ classifiers = [
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
-  "Programming Language :: Python :: 3.13",
   "Operating System :: OS Independent",
 ]
 # NFR-002: core import requires standard library only.
@@ -52,6 +51,14 @@ fiae = "fiae.cli:main"
 dev = ["pytest>=7.0", "cython>=3.0", "hypothesis>=6.100"]
 tier1 = ["numpy", "scikit-learn", "joblib", "polars", "pandas"]
 tier2 = ["lightgbm", "xgboost", "catboost", "optuna"]
+# M38: one extra per lazily-imported optional adapter dependency, so every
+# adapter has a documented install path (external audit finding).
+api = ["requests"]
+aws = ["boto3"]
+gcs = ["google-cloud-storage"]
+azure = ["azure-storage-blob"]
+sql = ["sqlalchemy"]
+excel = ["openpyxl"]
 build = ["cython>=3.0", "numpy>=1.24"]
 
 [tool.setuptools.packages.find]
