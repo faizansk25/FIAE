@@ -27,6 +27,26 @@ from .search.triggers import FeatureProposal
 _FIT_REQUIRED_SCOPES = frozenset({FitScope.TRAINING_FOLD, FitScope.DEVELOPMENT})
 
 
+def canonical_feature_id(proposal: FeatureProposal) -> str:
+    """Unique, deterministic feature ID: op + ordered inputs + params.
+
+    M39 (external audit): params are part of a feature's identity. The old
+    name (op + inputs only) made ``winsorize(age, 0.01/0.99)`` and
+    ``winsorize(age, 0.05/0.95)`` the same key, so one fitted state and one
+    output column silently overwrote the other.
+    """
+    base = proposal.op + "(" + "_".join(
+        inp[4:] if inp.startswith("raw:") else inp
+        for inp in proposal.inputs
+    ) + ")"
+    if proposal.params:
+        kv = ",".join(
+            f"{k}={proposal.params[k]}" for k in sorted(proposal.params)
+        )
+        base += "[" + kv + "]"
+    return base
+
+
 def _needs_fit(op: FeatureOperator) -> bool:
     """Check if an operator requires a fit step."""
     return op.fit_scope in _FIT_REQUIRED_SCOPES
@@ -84,10 +104,7 @@ class FittedPipeline:
         results: dict[str, list] = {}
 
         for proposal in proposals:
-            feat_name = proposal.op + "(" + "_".join(
-                inp[4:] if inp.startswith("raw:") else inp
-                for inp in proposal.inputs
-            ) + ")"
+            feat_name = canonical_feature_id(proposal)
 
             op = get_operator(proposal.op)
             input_arrays = self._get_inputs(proposal, columnar_data)
@@ -161,10 +178,7 @@ class FittedPipeline:
         results: dict[str, list] = {}
 
         for proposal in proposals:
-            feat_name = proposal.op + "(" + "_".join(
-                inp[4:] if inp.startswith("raw:") else inp
-                for inp in proposal.inputs
-            ) + ")"
+            feat_name = canonical_feature_id(proposal)
 
             op = get_operator(proposal.op)
             input_arrays = self._get_inputs(proposal, columnar_data)

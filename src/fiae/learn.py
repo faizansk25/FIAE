@@ -472,7 +472,7 @@ def learn(source, target, *, config=None):
     report.funnel_passed_f2 = len(funnel_passed)
 
     # Phase 7: Materialize survivors using FittedPipeline
-    from .fitted_pipeline import FittedPipeline
+    from .fitted_pipeline import FittedPipeline, canonical_feature_id
     fitted_pipe = FittedPipeline()
     surviving_proposals = [p for p, r in funnel_passed]
     # P0-3 (M36) holdout discipline: L1 fit states are learned on DEV rows
@@ -512,9 +512,7 @@ def learn(source, target, *, config=None):
     # consumers — e.g. PipelineIR export — can rebuild exactly what was fitted.
     _name_to_proposal = {}
     for p in surviving_proposals:
-        _nm = p.op + "(" + "_".join(
-            inp[4:] if inp.startswith("raw:") else inp for inp in p.inputs
-        ) + ")"
+        _nm = canonical_feature_id(p)
         _name_to_proposal[_nm] = p
     report.portfolio_proposals = [
         _name_to_proposal[n] for n in selected_names if n in _name_to_proposal

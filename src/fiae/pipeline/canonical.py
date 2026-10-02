@@ -569,12 +569,10 @@ def phase_funnel(
 
         # Re-attach winning proposals in selection order (same naming the
         # FittedPipeline uses for feature outputs).
+        from ..fitted_pipeline import canonical_feature_id
         by_name: dict = {}
         for p in survivors:
-            nm = p.op + "(" + "_".join(
-                inp[4:] if inp.startswith("raw:") else inp for inp in p.inputs
-            ) + ")"
-            by_name[nm] = p
+            by_name[canonical_feature_id(p)] = p
         result.portfolio_proposals = [by_name[nm] for nm in selected if nm in by_name]
     except Exception as e:
         result.errors.append(str(e))
@@ -589,6 +587,9 @@ def phase_funnel(
 class HOResult:
     """Result of HPO and model selection."""
     trials_completed: int = 0
+    # M39 (external audit): ``best_model`` means "a model actually trained
+    # and won promotion". Empty string when nothing succeeded — never a
+    # fabricated fallback name.
     best_model: str = ""
     best_score: float = 0.0
     search_strategy: str = "successive_halving"
@@ -722,8 +723,7 @@ def phase_hpo(
                 funnel, source_path, target, validation)
         if not X or not y:
             result.errors.append(
-                "no training data available - recorded model family routing only")
-            result.best_model = "random_forest"
+                "no training data available - model selection skipped")
             return result
 
         # Task-aware routing happens AFTER the task is known (see map
@@ -764,10 +764,8 @@ def phase_hpo(
             result.best_score = best[1]
         else:
             result.errors.append("all model trials failed")
-            result.best_model = families[0]
     except Exception as e:
         result.errors.append(f"HPO error: {e}")
-        result.best_model = "random_forest"
     return result
 
 
@@ -855,7 +853,10 @@ def phase_evaluate(
     result = EvalResult()
     try:
         # Primary metric from the promoted HPO trial's real CV score.
-        if hpo.best_score > 0:
+        # M39 (external audit): a valid regression metric can be negative
+        # (R^2, neg MSE). "A model ran" is decided by best_model, not by
+        # the sign of the score.
+        if hpo.best_model and hpo.best_score == hpo.best_score:
             result.primary_value = hpo.best_score
             result.primary_metric = "quality"
         else:
@@ -1026,6 +1027,16 @@ def phase_codegen(
         result.verification_gates_passed = sum(1 for g in report.gates if g.passed)
         result.verification_gates_total = len(report.gates)
 
+        # M39 (external audit): fail closed. The runnable code artifact is
+        # only promoted to the official export path when every mandatory
+        # gate passed — a failed export must not leave a normal-looking
+        # features.py that consumers mistake for a verified artifact.
+        if not report.all_passed:
+            result.errors.append(
+                "verification gates failed - export not promoted: "
+                + ", ".join(g.gate_name for g in report.gates if not g.passed))
+            return result
+
         export_dir = os.path.join(ctx.run_dir, "export")
         os.makedirs(export_dir, exist_ok=True)
         ir_path = os.path.join(export_dir, "pipeline_ir.json")
@@ -1039,11 +1050,6 @@ def phase_codegen(
             f.write(report.generated_code)
         result.export_path = export_dir
         result.export_code_path = code_path
-
-        if not report.all_passed:
-            result.errors.append(
-                "verification gates failed: "
-                + ", ".join(g.gate_name for g in report.gates if not g.passed))
     except Exception as e:
         result.errors.append(str(e))
 
@@ -1071,11 +1077,17 @@ class CanonicalResult:
     codegen: Optional[CodegenResult] = None
     total_time_s: float = 0.0
     errors: list[str] = field(default_factory=list)
+    # M39 (external audit): explicit run status. SUCCESS = no phase errors,
+    # PARTIAL = finished but some phase recorded errors, FAILED = a phase
+    # raised. ``phases_completed`` alone could claim 10/10 on a run whose
+    # HPO/evaluation/codegen phases recorded structured errors.
+    status: str = "SUCCESS"
 
     def summary(self) -> dict:
         return {
             "run_id": self.run_id,
             "phases_completed": self.phases_completed,
+            "status": self.status,
             "total_time_s": self.total_time_s,
             "portfolio_size": self.funnel.portfolio_size if self.funnel else 0,
             "best_model": self.hpo.best_model if self.hpo else "",
@@ -1161,6 +1173,19 @@ def run_canonical_pipeline(
 
     except Exception as e:
         result.errors.append(f"Pipeline error: {e}")
+        result.status = "FAILED"
+
+    # M39: aggregate every phase's structured errors — only intake errors
+    # were promoted before, so later-phase errors could hide behind a
+    # phases_completed=10 run.
+    for phase_result in (result.validation, result.splits, result.generation,
+                         result.funnel, result.hpo, result.ensemble,
+                         result.evaluation, result.codegen):
+        for err in getattr(phase_result, "errors", []) or []:
+            if err not in result.errors:
+                result.errors.append(err)
+    if result.status != "FAILED" and result.errors:
+        result.status = "PARTIAL"
 
     result.total_time_s = time.monotonic() - t0
     return result

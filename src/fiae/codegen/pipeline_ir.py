@@ -199,7 +199,10 @@ def build_ir_from_proposals(
             params=dict(proposal.params),
         )
         ir.add_node(node)
-        seen[proposal.op + "(" + "_".join(inputs) + ")"] = node_id
+        # M39: feature identity includes params — must match
+        # fitted_pipeline.canonical_feature_id so chained inputs resolve.
+        from ..fitted_pipeline import canonical_feature_id
+        seen[canonical_feature_id(proposal)] = node_id
         ir.outputs.append(node_id)
 
     return ir

@@ -42,7 +42,8 @@ class TestP0_1_CategoricalPreserved:
                              params={"n_buckets": 8})],
             {"plan": raw["plan"]},
         )
-        values = out["hash_encode(plan)"]
+        # M39 naming: params are part of the canonical feature ID.
+        values = out["hash_encode(plan)[n_buckets=8]"]
         # Old bug: all categories coerced to None -> constant 0.0 column.
         distinct = {v for v in values if v is not None}
         assert len(distinct) > 1, "hash buckets collapsed to one value"
