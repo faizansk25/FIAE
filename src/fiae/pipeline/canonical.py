@@ -736,6 +736,7 @@ def phase_hpo(
         from ..orchestration.model_training import (
             TrialRunner,
             TrialSpec,
+            is_better,
             primary_metric,
         )
 
@@ -774,15 +775,14 @@ def phase_hpo(
             result.trials.append(trial)
             result.trials_completed += 1
             if trial.status.name == "COMPLETED":
-                # M40: compare only scores with the same identity. A ROC-AUC
-                # and a negated MSE are both floats; ranking them against
-                # each other is meaningless.
                 m = primary_metric(trial)
-                score = m.value if m is not None else None
-                if (m is not None and score == score
-                        and (best is None or m.name == best[2])
-                        and (best is None or score > best[1])):
-                    best = (fam, score, m.name)
+                if m is None or m.value != m.value:  # None or NaN
+                    continue
+                # M40: selection follows each metric's declared direction
+                # (is_better), not a hard-coded ">". A ROC-AUC and an MSE
+                # are both floats; so are two losses with opposite senses.
+                if best is None or is_better(m, best[3]):
+                    best = (fam, m.value, m.name, m)
 
         if best is not None:
             result.best_model = best[0]
@@ -835,11 +835,18 @@ def phase_ensemble(
                 result.stacking_used = ensemble_spec.stacker is not None
                 result.marginal_value = True
             else:
-                # Fallback: compute weights manually
-                n = len(trials)
-                result.members = n
-                result.weights = [1.0 / n] * n
-                result.marginal_value = n > 1
+                # M40 item 5: "no ensemble" is not "an equal-weight
+                # ensemble". build_ensemble() returned None because no trial
+                # passed eligibility; synthesising 1/n weights over those
+                # same rejected trials reported a model that was never
+                # built. Record the truth instead.
+                result.members = 0
+                result.weights = []
+                result.marginal_value = False
+                result.errors.append(
+                    f"no eligible ensemble: none of the {len(trials)} "
+                    "trial(s) passed ensemble eligibility (completed, "
+                    "matching metric identity, real fold evidence)")
         elif len(trials) == 1:
             result.members = 1
             result.weights = [1.0]
@@ -898,7 +905,11 @@ def phase_evaluate(
                 continue
             m = primary_metric(t)
             q = m.value if m is not None else None
-            if q is not None and q == hpo.best_score:
+            # M40: the promoted score's identity must match, so a stale
+            # equal-valued score under a different name cannot be mistaken
+            # for the trial that won.
+            if (q is not None and q == hpo.best_score
+                    and (not hpo.best_metric or m.name == hpo.best_metric)):
                 best_trial = t
                 break
         if best_trial is not None:

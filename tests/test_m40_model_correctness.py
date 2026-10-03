@@ -18,13 +18,14 @@ import pytest
 
 sklearn = pytest.importorskip("sklearn")
 
-from fiae.contracts import Direction, TrialStatus
+from fiae.contracts import Direction, MetricValue, TrialStatus
 from fiae.orchestration.model_training import (
     TrialRunner,
     TrialSpec,
     _evaluate_cv,
     _get_sklearn_model,
-    _resolve_scorer,
+    _resolve_spec,
+    is_better,
     primary_metric,
 )
 from fiae.problem.splits import group_kfold_indexes, stratified_kfold_indexes
@@ -88,7 +89,7 @@ class TestRequestedFoldsAreHonoured:
 class TestNoSilentMetricSubstitution:
     def test_multiclass_has_no_implicit_accuracy_fallback(self):
         # Pre-M40: any non-binary target silently switched to accuracy.
-        assert _resolve_scorer("classification", [0.0, 1.0, 2.0] * 20) is None
+        assert _resolve_spec("classification", [0.0, 1.0, 2.0] * 20) is None
 
     def test_multiclass_trial_fails_instead_of_reporting_accuracy(self):
         X = [[float(i), float(i % 3)] for i in range(120)]
@@ -142,17 +143,18 @@ class TestMetricIdentityTravels:
         assert m.direction is Direction.MAXIMIZE
         assert m.aggregation == "mean"
 
-    def test_regression_metric_is_named_and_minimized(self):
+    def test_regression_metric_is_a_positive_loss_named_mse(self):
         rng = random.Random(1)
         X = [[rng.random(), rng.random()] for _ in range(120)]
         y = [rng.random() * 10 for _ in range(120)]
         trial = TrialRunner().run_trial(
             TrialSpec(model_family="ridge", fold_count=5), X, y, "regression")
         m = primary_metric(trial)
-        assert m.name == "neg_mean_squared_error"
-        # Pre-M40 every score was declared MAXIMIZE, which inverts ranking
-        # for any negated metric.
+        # M40: FIAE publishes the loss itself, not sklearn's negated
+        # scorer. MSE is positive and minimized.
+        assert m.name == "mse"
         assert m.direction is Direction.MINIMIZE
+        assert m.value >= 0.0
 
     def test_no_metric_is_ever_named_quality(self):
         X, y = _binary_data()
@@ -185,3 +187,132 @@ class TestFoldPlannersRespectTheirLimitingUnit:
         for tr, val in group_kfold_indexes(80, group_ids, 4, seed=1):
             assert not ({group_ids[i] for i in tr}
                         & {group_ids[i] for i in val})
+
+
+class TestDirectionSemantics:
+    """M40 item 6: sklearn's neg_* convention must not leak into FIAE."""
+
+    def test_mse_a_beats_mse_b(self):
+        a = MetricValue(name="mse", value=0.1, direction=Direction.MINIMIZE,
+                        split="cv")
+        b = MetricValue(name="mse", value=1.0, direction=Direction.MINIMIZE,
+                        split="cv")
+        # A small MSE is the better model even though 0.1 < 1.0.
+        assert is_better(a, b)
+        assert not is_better(b, a)
+
+    def test_maximize_metric_still_ranks_normally(self):
+        a = MetricValue(name="roc_auc", value=0.81, direction=Direction.MAXIMIZE,
+                        split="cv")
+        b = MetricValue(name="roc_auc", value=0.62, direction=Direction.MAXIMIZE,
+                        split="cv")
+        assert is_better(a, b)
+        assert not is_better(b, a)
+
+    def test_different_identities_are_never_compared(self):
+        a = MetricValue(name="roc_auc", value=0.9, direction=Direction.MAXIMIZE,
+                        split="cv")
+        b = MetricValue(name="mse", value=0.01, direction=Direction.MINIMIZE,
+                        split="cv")
+        assert not is_better(a, b)
+        assert not is_better(b, a)
+
+    def test_conflicting_direction_for_one_name_is_refused(self):
+        a = MetricValue(name="mse", value=0.1, direction=Direction.MINIMIZE,
+                        split="cv")
+        b = MetricValue(name="mse", value=0.2, direction=Direction.MAXIMIZE,
+                        split="cv")
+        with pytest.raises(ValueError, match="conflicting"):
+            is_better(a, b)
+
+
+class TestDegenerateFoldCountsFailExplicitly:
+    def test_single_minority_row_fails_instead_of_forcing_two_folds(self):
+        y = [0.0, 1.0, 0.0]
+        X = [[1.0], [2.0], [3.0]]
+        result = _evaluate_cv(
+            _get_sklearn_model("random_forest", {"task": "classification"}),
+            X, y, "classification", n_folds=5)
+        # max(2, 1) would hand sklearn a stratified split it cannot make.
+        assert result["scoring"].startswith(
+            "failed:insufficient_class_support_for_cv")
+        assert result["folds"] == []
+
+    def test_single_row_regression_fails_instead_of_forcing_two_folds(self):
+        result = _evaluate_cv(
+            _get_sklearn_model("ridge", {"task": "regression"}),
+            [[1.0]], [0.5], "regression", n_folds=5)
+        assert result["scoring"].startswith("failed:insufficient_rows_for_cv")
+
+    def test_one_group_split_is_rejected_not_coerced(self):
+        # max(2, ...) would have produced folds where validation and train
+        # are the same rows.
+        with pytest.raises(ValueError, match="at least 2 distinct groups"):
+            group_kfold_indexes(20, ["only"] * 20, 5, seed=0)
+
+    def test_singleton_class_split_is_rejected_not_coerced(self):
+        with pytest.raises(ValueError, match="at least 2 members"):
+            stratified_kfold_indexes(10, ["a"] * 9 + ["b"], 5, seed=0)
+
+
+class TestFoldEvidenceIsReal:
+    def test_fold_metrics_carry_distinct_per_fold_values(self):
+        X, y = _binary_data(150)
+        trial = TrialRunner().run_trial(
+            TrialSpec(model_family="random_forest", fold_count=5),
+            X, y, "classification")
+        assert len(trial.fold_metrics) == 5
+        values = [m.value for m in trial.fold_metrics]
+        assert len(set(values)) > 1, (
+            "fold metrics are copies of the aggregate, not real folds")
+        mean = primary_metric(trial).value
+        assert abs(sum(values) / len(values) - mean) < 1e-9
+        assert [m.fold for m in trial.fold_metrics] == [0, 1, 2, 3, 4]
+
+
+class TestEnsembleHonesty:
+    def _trial(self, tid, name="roc_auc", direction=Direction.MAXIMIZE,
+               folds=None, status=TrialStatus.COMPLETED):
+        from fiae.contracts import MetricValue as MV
+        from fiae.contracts import TrialResult
+        return TrialResult(
+            trial_id=tid, status=status,
+            metrics=[MV(name=name, value=0.7, direction=direction,
+                        split="cv_mean")],
+            fold_metrics=[MV(name=name, value=v, direction=direction,
+                             split="cv", fold=i)
+                          for i, v in enumerate(folds or [0.6, 0.7, 0.8])],
+        )
+
+    def test_failed_trial_never_enters_an_ensemble(self):
+        from fiae.orchestration.ensemble import (
+            EnsemblePolicy, build_ensemble, check_eligibility,
+        )
+
+        policy = EnsemblePolicy()
+        trials = [self._trial("ok"), self._trial("bad", status=TrialStatus.FAILED)]
+        assert [t.trial_id for t in check_eligibility(trials, policy)] == ["ok"]
+        spec = build_ensemble(trials, policy)
+        assert spec is None or "bad" not in spec.member_trial_ids
+
+    def test_ineligible_trials_produce_no_fabricated_weights(self):
+        from fiae.pipeline.canonical import HOResult, phase_ensemble
+        # Two COMPLETED trials with no fold evidence: nothing is eligible.
+        hpo = HOResult(best_model="random_forest", best_metric="roc_auc",
+                       trials=[self._trial("a"), self._trial("b")])
+        for t in hpo.trials:
+            t.fold_metrics = []
+        result = phase_ensemble(None, hpo)
+        assert result.members == 0
+        assert result.weights == []
+        assert result.marginal_value is False
+        assert any("no eligible ensemble" in e for e in result.errors), (
+            "silently fabricating an equal-weight ensemble")
+
+    def test_metric_mismatch_is_rejected(self):
+        from fiae.orchestration.ensemble import EnsemblePolicy, check_eligibility
+
+        trials = [self._trial("a", name="roc_auc"),
+                  self._trial("b", name="mse", direction=Direction.MINIMIZE)]
+        assert [t.trial_id
+                for t in check_eligibility(trials, EnsemblePolicy())] == ["a"]

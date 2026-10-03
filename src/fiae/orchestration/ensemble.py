@@ -55,12 +55,21 @@ def check_eligibility(
     Eligibility criteria (doc 07):
     - Must be COMPLETED
     - Must have at least one fold metric
+    - M40: every candidate must report the *same* metric identity and
+      direction. Combining a ROC-AUC with an MSE is meaningless, and a
+      fold-mean copy masquerading as fold evidence is not evidence.
     """
     eligible = []
+    identity: Optional[tuple[str, Direction]] = None
     for r in results:
         if r.status != TrialStatus.COMPLETED:
             continue
         if not r.fold_metrics:
+            continue
+        key = (r.fold_metrics[0].name, r.fold_metrics[0].direction)
+        if identity is None:
+            identity = key
+        elif key != identity:
             continue
         eligible.append(r)
     return eligible

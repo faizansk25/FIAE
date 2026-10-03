@@ -53,7 +53,15 @@ def stratified_kfold_indexes(
     # single-class validation fold, where ROC-AUC is undefined). Bound by
     # the limiting unit -- the smallest class -- not by the row count.
     if by_class:
-        k = max(2, min(k, min(len(idxs) for idxs in by_class.values())))
+        smallest = min(len(idxs) for idxs in by_class.values())
+        if smallest < 2:
+            # max(2, 1) would hand back a stratified split that cannot
+            # exist: one fold would hold the class and the rest would not.
+            raise ValueError(
+                "stratified k-fold needs at least 2 members in every class; "
+                f"smallest class has {smallest}"
+            )
+        k = max(2, min(k, smallest))
     fold_id = [0] * n
     for idxs in by_class.values():
         rng.shuffle(idxs)
@@ -109,6 +117,12 @@ def group_kfold_indexes(
     # k=5 the old code emitted two folds whose validation set was empty --
     # a validation fold with no rows scores nothing and silently flattens
     # the fold distribution.
+    if len(uniq) < 2:
+        # One group cannot be held out from itself: every "validation"
+        # fold would equal the training set.
+        raise ValueError(
+            f"group k-fold needs at least 2 distinct groups; got {len(uniq)}"
+        )
     k = max(2, min(int(k), n, len(uniq)))
     rng.shuffle(uniq)
     out = []

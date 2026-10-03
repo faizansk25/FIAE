@@ -46,7 +46,12 @@ class TestEvaluateCvImbalanced:
         assert results["scoring"] == "roc_auc"
 
     def test_regression_unaffected(self):
-        """Regression targets still use plain KFold + neg MSE."""
+        """Regression targets still use plain KFold + MSE.
+
+        M40: FIAE publishes the loss itself ("mse", minimize) rather than
+        sklearn's negated scorer name, which was an optimization
+        convention leaking into the domain contract.
+        """
         X = [[float(i), float(i % 3)] for i in range(40)]
         y = [float(i) for i in range(40)]
 
@@ -54,7 +59,9 @@ class TestEvaluateCvImbalanced:
             _logistic(), X, y, task="regression", n_folds=4, seed=42
         )
 
-        assert results["scoring"] == "neg_mean_squared_error"
+        assert results["scoring"] == "mse"
+        assert results["direction"] == "minimize"
+        assert results["mean"] >= 0.0, "MSE must be a positive loss"
 
 
 class TestExampleDatasetBalance:
