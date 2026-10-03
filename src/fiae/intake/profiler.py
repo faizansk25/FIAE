@@ -15,7 +15,14 @@ from collections import Counter
 from dataclasses import dataclass, field
 from typing import Any, Optional
 
-from ..contracts import ColumnProfile, DatasetProfile, SemanticType
+from ..contracts import (
+    ColumnProfile,
+    DatasetProfile,
+    ProfileCoverage,
+    SemanticType,
+    StopReason,
+    TotalKind,
+)
 from ..errors import ErrorCode, FIAEError
 from ..ids import content_hash, dataset_fingerprint
 from .base import DataSourceAdapter, SamplePlan
@@ -226,6 +233,9 @@ def profile_source(
     report = getattr(adapter, "dialect_report", lambda: {})()
 
     rows_observed = 0
+    # M39.2: default assumes the source was read to the end; the loop
+    # overwrites it the moment a budget actually cuts the read short.
+    stop_reason = StopReason.SOURCE_EXHAUSTED
     accs: Optional[dict[str, _ColumnAccumulator]] = None
     columns: Optional[list[str]] = None
     parallel = config.scheduler == "threads"
@@ -238,9 +248,23 @@ def profile_source(
     try:
         for batch in batches:
             if time.monotonic() - start > config.time_budget_s:
+                stop_reason = StopReason.TIME_BUDGET
                 break  # bounded: keep what we have, statistics marked approximate
+            # M39.2: the row budget is enforced *at ingestion*. It used to be
+            # checked after a whole batch was accumulated, so a 2,048-row
+            # batch could push rows_observed to 100,352 under a 100,000
+            # max_rows -- and the statistics included the overshoot.
+            remaining = config.max_rows - rows_observed
+            if remaining <= 0:
+                stop_reason = StopReason.MAX_ROWS
+                break
+            take = min(batch.n_rows, remaining)
+            batch_columns = (
+                batch.columns if take == batch.n_rows
+                else {name: values[:take] for name, values in batch.columns.items()}
+            )
             if accs is None:
-                columns = list(batch.columns.keys())
+                columns = list(batch_columns.keys())
                 accs = {
                     name: _ColumnAccumulator(
                         missingness=Missingness(config.missing_tokens),
@@ -260,20 +284,38 @@ def profile_source(
                         values,
                         config.missing_tokens,
                     )
-                    for name, values in batch.columns.items()
+                    for name, values in batch_columns.items()
                 }
                 for name, future in futures.items():
                     partial = future.result()
                     accs[name].merge(partial)
             else:
-                for name, values in batch.columns.items():
+                for name, values in batch_columns.items():
                     _feed(accs[name], values, config.missing_tokens)
-            rows_observed += batch.n_rows
-            if rows_observed >= config.max_rows:
+            rows_observed += take
+            if take < batch.n_rows:
+                stop_reason = StopReason.MAX_ROWS
                 break
     finally:
         if executor is not None:
             executor.shutdown(wait=False)
+
+    if rows_observed > config.max_rows:  # M39.2: hard row budget, enforced
+        # Unreachable: the batch slice above caps every read. Raised rather
+        # than asserted because it would mean the statistics already
+        # consumed rows outside the declared budget -- a corrupt result, not
+        # a recoverable input problem.
+        raise FIAEError(
+            code=ErrorCode.ARTIFACT_CORRUPTION,
+            safe_message=(
+                "Profiling exceeded its row budget; results discarded."
+            ),
+            component="profiler",
+            evidence={
+                "rows_observed": rows_observed,
+                "max_rows": config.max_rows,
+            },
+        )
 
     if accs is None or columns is None or rows_observed == 0:
         raise FIAEError(
@@ -306,7 +348,13 @@ def profile_source(
     if verify is not None:
         verify()
 
-    exact_stats = config.mode is ProfileMode.EXACT
+    exact_stats = (
+        config.mode is ProfileMode.EXACT
+        # M39.2: EXACT was *requested*; these stats are only exact if the
+        # source was also read to the end. Hitting max_rows or the time
+        # budget in EXACT mode produces a sample, and must say so.
+        and stop_reason is StopReason.SOURCE_EXHAUSTED
+    )
     column_profiles: list[ColumnProfile] = []
     content_signatures: dict[str, str] = {}
     for name in columns:
@@ -386,6 +434,35 @@ def profile_source(
         adapter.fingerprint_material(), schema_fingerprint, parser_config
     )
 
+    # M39.2: resolve the sampling provenance once, here, so every surface
+    # reports the same thing instead of each inventing its own row count.
+    estimated_total = adapter.estimate_rows()
+    if stop_reason is StopReason.SOURCE_EXHAUSTED and config.mode is ProfileMode.EXACT:
+        # A full EXACT scan *is* the total: exact, by construction.
+        rows_total: Optional[int] = rows_observed
+        total_kind = TotalKind.EXACT
+    elif estimated_total is not None:
+        rows_total = estimated_total
+        total_kind = TotalKind.ESTIMATED
+        if stop_reason is StopReason.SOURCE_EXHAUSTED and estimated_total > rows_observed:
+            # The read ended early in sampled mode: the sample byte budget
+            # is the only remaining cap that can truncate it silently.
+            stop_reason = StopReason.MAX_BYTES
+    else:
+        rows_total = None
+        total_kind = TotalKind.UNKNOWN
+        if stop_reason is StopReason.SOURCE_EXHAUSTED and config.mode is not ProfileMode.EXACT:
+            # Cannot claim exhaustion we cannot verify.
+            stop_reason = StopReason.MAX_BYTES
+    coverage = ProfileCoverage(
+        rows_observed=rows_observed,
+        rows_total=rows_total,
+        total_kind=total_kind,
+        stop_reason=stop_reason,
+        bytes_observed=adapter.estimate_bytes(),
+        elapsed_s=round(time.monotonic() - start, 4),
+    )
+
     return DatasetProfile(
         dataset_fingerprint=fp,
         rows_observed=rows_observed,
@@ -397,7 +474,9 @@ def profile_source(
             "estimated_bytes": adapter.estimate_bytes(),
             "mode": config.mode.value,
             "exact_stats": exact_stats,
+            "stop_reason": stop_reason.value,
         },
+        coverage=coverage,
         quality_findings=all_findings,
     )
 

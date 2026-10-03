@@ -191,11 +191,19 @@ class CsvDataSourceAdapter:
         return None  # CSV is not self-describing (doc 08)
 
     def estimate_rows(self) -> Optional[int]:
-        """Estimate from average line length over the bounded probe."""
+        """Estimate from average line length over the bounded probe.
+
+        M39.2: the header line is counted in the probe but is not a data
+        row, so it is subtracted -- otherwise every CSV over-reports by
+        exactly one row (200 data rows -> "201 estimated").
+        """
         if self._probe_lines == 0:
             return None
         avg_line = self._probe_bytes / self._probe_lines
-        return int(self._size / avg_line)
+        estimate = int(self._size / avg_line)
+        if getattr(self, "has_header", None):
+            estimate -= 1
+        return max(estimate, 0)
 
     def estimate_bytes(self) -> Optional[int]:
         return self._size

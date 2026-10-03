@@ -835,7 +835,13 @@ function renderLearn(r, jobId){
   $("learnResult").style.display = "";
   const kv = [
     ["Task", r.task + " (" + Math.round((r.task_confidence ?? 0) * 100) + "% conf)"],
-    ["Rows", (r.rows ?? r.rows_in_source ?? 0).toLocaleString()],
+    // M39.2: never show a sampled count as the dataset's total.
+    ["Rows in source", r.rows_in_source == null
+        ? "unknown"
+        : (r.rows_in_source_kind === "exact"
+            ? r.rows_in_source.toLocaleString() + " exact"
+            : "~" + r.rows_in_source.toLocaleString() + " estimated")],
+    ["Rows profiled", (r.rows_profiled ?? 0).toLocaleString()],
     ["Columns", r.columns ?? r.columns_in_source ?? "-"],
     ["Metrics", (r.metrics || []).join(", ") || "-"],
     ["Proposals", r.proposals_generated + " → " + r.proposals_after_dedup + " unique"],
@@ -1851,6 +1857,7 @@ def profile_job(source: str, **kwargs) -> dict:
         "dataset_fingerprint": profile.dataset_fingerprint,
         "rows_observed": profile.rows_observed,
         "rows_estimated": profile.rows_estimated,
+        "coverage": profile.coverage.to_dict(),
         "columns": columns,
         "quality_findings": list(profile.quality_findings or []),
         "preview": {"columns": [c["name"] for c in columns],

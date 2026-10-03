@@ -661,17 +661,26 @@ def build_report(source: str, target: Optional[str] = None,
     profile = profile_source(adapter, ProfileConfig(mode=ProfileMode.FAST))
 
     # ---- scan up to max_rows ------------------------------------------------
+    # M39.2: bounded at ingestion. This used to read a whole batch, count
+    # it, then slice every column down to max_rows afterwards, so
+    # rows_scanned could report 20,480 while every statistic in the report
+    # was computed on 20,000 rows.
     columns: dict[str, list] = {}
     rows_read = 0
+    truncated = False
     for batch in adapter.scan():
         n = max((len(v) for v in batch.columns.values()), default=0)
-        for name, vals in batch.columns.items():
-            columns.setdefault(name, []).extend(vals)
-        rows_read += n
-        if rows_read >= max_rows:
+        remaining = max_rows - rows_read
+        if remaining <= 0:
+            truncated = True
             break
-    for name in columns:
-        columns[name] = columns[name][:max_rows]
+        take = min(n, remaining)
+        for name, vals in batch.columns.items():
+            columns.setdefault(name, []).extend(vals[:take])
+        rows_read += take
+        if take < n:
+            truncated = True
+            break
 
     column_meta = {c.name: c for c in profile.columns}
     numeric: dict[str, list[Optional[float]]] = {}
@@ -884,6 +893,11 @@ def build_report(source: str, target: Optional[str] = None,
         "source_id": adapter.source_id(),
         "fingerprint": profile.dataset_fingerprint,
         "rows_scanned": rows_read,
+        # M39.2: rows_scanned is now exactly the rows every statistic below
+        # was computed on, plus honest provenance when that is a sample.
+        "rows_truncated": truncated,
+        "rows_total_estimated": profile.rows_estimated,
+        "profile_stop_reason": profile.source_cost.get("stop_reason", ""),
         "n_columns": len(columns),
         "column_stats": column_stats,
         "correlation": {"columns": corr_columns, "matrix": matrix},

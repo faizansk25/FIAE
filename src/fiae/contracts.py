@@ -27,6 +27,29 @@ class Task(str, enum.Enum):
     UNSUPERVISED = "unsupervised"
 
 
+class StopReason(str, enum.Enum):
+    """Why profiling stopped reading the source (M39.2).
+
+    A downstream consumer that only receives a row count cannot tell
+    "the source had 100 rows" from "we stopped at 100 rows because of a
+    budget" — which is the difference between exact statistics and a
+    sample. Downstream code must be able to see which one it got.
+    """
+
+    SOURCE_EXHAUSTED = "source_exhausted"
+    MAX_ROWS = "max_rows"
+    MAX_BYTES = "max_bytes"
+    TIME_BUDGET = "time_budget"
+
+
+class TotalKind(str, enum.Enum):
+    """Provenance of a dataset's total row count (M39.2)."""
+
+    EXACT = "exact"
+    ESTIMATED = "estimated"
+    UNKNOWN = "unknown"
+
+
 class SemanticType(str, enum.Enum):
     CONTINUOUS_NUMERIC = "continuous_numeric"
     COUNT = "count"
@@ -136,6 +159,69 @@ class DatasetProfile:
     meta_features: dict[str, Any] = field(default_factory=dict)
     source_cost: dict[str, Any] = field(default_factory=dict)
     quality_findings: list[dict[str, Any]] = field(default_factory=list)
+    # M39.2: how much of the source was actually inspected, why we stopped,
+    # and what the total row count is worth. ``rows_observed`` alone cannot
+    # answer any of those three questions.
+    coverage: "ProfileCoverage" = field(default_factory=lambda: ProfileCoverage())
+
+
+@dataclass
+class ProfileCoverage:
+    """Sampling provenance for one profiling run (M39.2).
+
+    Four distinct quantities, deliberately not collapsed into one integer:
+    ``rows_observed``  rows physically inspected;
+    ``rows_total``     the source's total, when knowable (else None);
+    ``total_kind``     whether that total is exact, estimated or unknown;
+    ``stop_reason``    which budget ended the read.
+    """
+
+    rows_observed: int = 0
+    rows_total: Optional[int] = None
+    total_kind: TotalKind = TotalKind.UNKNOWN
+    stop_reason: StopReason = StopReason.SOURCE_EXHAUSTED
+    bytes_observed: Optional[int] = None
+    elapsed_s: float = 0.0
+
+    @property
+    def coverage(self) -> Optional[float]:
+        """Fraction of the source inspected, when the total is known."""
+        if not self.rows_total:
+            return None
+        return min(1.0, self.rows_observed / self.rows_total)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "rows_observed": self.rows_observed,
+            "rows_total": self.rows_total,
+            "total_kind": self.total_kind.value,
+            "stop_reason": self.stop_reason.value,
+            "coverage": self.coverage,
+            "bytes_observed": self.bytes_observed,
+            "elapsed_s": self.elapsed_s,
+        }
+
+
+def format_row_coverage(coverage: "ProfileCoverage") -> str:
+    """One honest row line shared by every FIAE surface (M39.2).
+
+    ``inspect``, ``analyze``, ``learn``, the GUI and the API all used to
+    print a different, partly invented meaning of "rows". This is the one
+    formatter; it never substitutes the sample size for an unknown total.
+    """
+    total = coverage.rows_total
+    if coverage.total_kind is TotalKind.EXACT and total is not None:
+        total_text = f"{total:,} exact"
+    elif coverage.total_kind is TotalKind.ESTIMATED and total is not None:
+        total_text = f"~{total:,} estimated"
+    else:
+        total_text = "unknown"
+    line = f"rows in source: {total_text} | rows profiled: {coverage.rows_observed:,}"
+    if coverage.coverage is not None:
+        line += f" | coverage: {coverage.coverage:.1%}"
+    if coverage.stop_reason is not StopReason.SOURCE_EXHAUSTED:
+        line += f" | stopped: {coverage.stop_reason.value}"
+    return line
 
 
 @dataclass

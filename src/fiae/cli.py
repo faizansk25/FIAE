@@ -16,7 +16,13 @@ from typing import Any, Optional
 from .errors import ErrorCode, FIAEError
 from .identity import banner, splash, version_line
 from .intake import ProfileConfig, ProfileMode, profile_source
-from .contracts import SemanticType
+from .contracts import (
+    ProfileCoverage,
+    SemanticType,
+    StopReason,
+    TotalKind,
+    format_row_coverage,
+)
 from . import cli_colors as C
 
 
@@ -70,7 +76,7 @@ def cmd_inspect(args: argparse.Namespace) -> int:
         print(C.command_header("inspect", "Data Source Profile"))
         print()
         print(C.key_value("source", adapter.source_id()))
-        print(C.key_value("rows", f"{p.rows_observed} observed / {p.rows_estimated} estimated"))
+        print(C.key_value("coverage", format_row_coverage(p.coverage)))
         print(C.key_value("fingerprint", C.gray(p.dataset_fingerprint)))
         print(C.key_value("columns", str(len(p.columns))))
         print()
@@ -190,7 +196,7 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print()
         print(C.section("Dataset Summary"))
         print()
-        print(C.key_value("rows", str(profile.rows_observed)))
+        print(C.key_value("coverage", format_row_coverage(profile.coverage)))
         print(C.key_value("fingerprint", C.gray(profile.dataset_fingerprint)))
         print(C.key_value("quality findings", str(len(profile.quality_findings))))
         for f in profile.quality_findings:
@@ -232,7 +238,12 @@ def cmd_learn(args: argparse.Namespace) -> int:
         print(C.key_value("target", f"{C.cyan(r.target)} ({C.purple(r.task)}, confidence={C.green(f'{r.task_confidence:.0%}')})"))
         if r.positive_class is not None:
             print(C.key_value("positive", str(r.positive_class)))
-        print(C.key_value("rows", str(r.rows_in_source)))
+        print(C.key_value("coverage", format_row_coverage(ProfileCoverage(
+            rows_observed=r.rows_profiled,
+            rows_total=r.rows_in_source,
+            total_kind=TotalKind(r.rows_in_source_kind),
+            stop_reason=StopReason(r.profile_stop_reason or "source_exhausted"),
+        ))))
         print(C.key_value("columns", str(r.columns_in_source)))
         print(C.key_value("metrics", ", ".join(C.cyan(m) for m in r.metrics)))
         print()

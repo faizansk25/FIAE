@@ -225,7 +225,16 @@ class LearnReport:
     source_id: str = ""
     dataset_fingerprint: str = ""
     columns_in_source: int = 0
-    rows_in_source: int = 0
+    # M39.2: four quantities, not one overloaded integer. ``rows_in_source``
+    # is the source's TOTAL when knowable (else None -- never the sample
+    # size), ``rows_in_source_kind`` says whether that total is exact or
+    # estimated, ``rows_profiled`` is what was actually inspected, and
+    # ``profile_coverage`` is the ratio between them.
+    rows_in_source: Optional[int] = None
+    rows_in_source_kind: str = "unknown"
+    rows_profiled: int = 0
+    profile_coverage: Optional[float] = None
+    profile_stop_reason: str = ""
     target: str = ""
     task: str = ""
     task_confidence: float = 0.0
@@ -252,6 +261,9 @@ class LearnReport:
             "dataset_fingerprint": self.dataset_fingerprint,
             "columns": self.columns_in_source,
             "rows": self.rows_in_source,
+            "rows_kind": self.rows_in_source_kind,
+            "rows_profiled": self.rows_profiled,
+            "profile_coverage": self.profile_coverage,
             "target": self.target,
             "task": self.task,
             "task_confidence": self.task_confidence,
@@ -305,7 +317,11 @@ def learn(source, target, *, config=None):
     profile = profile_source(adapter, profile_config)
     report.dataset_fingerprint = profile.dataset_fingerprint
     report.columns_in_source = len(profile.columns)
-    report.rows_in_source = profile.rows_observed
+    report.rows_in_source = profile.coverage.rows_total
+    report.rows_in_source_kind = profile.coverage.total_kind.value
+    report.rows_profiled = profile.rows_observed
+    report.profile_coverage = profile.coverage.coverage
+    report.profile_stop_reason = profile.coverage.stop_reason.value
 
     # Phase 2: Task inference
     col_data = scan_columns(adapter, max_rows=cfg.sample_rows, projection=[target])
@@ -495,7 +511,7 @@ def learn(source, target, *, config=None):
         report.total_time_s = time.monotonic() - t0
         _write_experience_case(report, cfg, success=False)
         if tracker is not None:
-            tracker.log_metrics({"rows": report.rows_in_source,
+            tracker.log_metrics({"rows": report.rows_profiled,
                                  "portfolio_size": 0,
                                  "total_time_s": report.total_time_s})
             tracker.finish()
@@ -558,7 +574,7 @@ def learn(source, target, *, config=None):
     _write_experience_case(report, cfg, success=bool(passed_members))
     if tracker is not None:
         metrics = {
-            "rows": report.rows_in_source,
+            "rows": report.rows_profiled,
             "columns": report.columns_in_source,
             "proposals_generated": report.proposals_generated,
             "proposals_after_dedup": report.proposals_after_dedup,
