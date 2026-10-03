@@ -260,8 +260,12 @@ class LearnReport:
             "source_id": self.source_id,
             "dataset_fingerprint": self.dataset_fingerprint,
             "columns": self.columns_in_source,
+            # M39.2: "rows" is the honest TOTAL (or null when unknown),
+            # never the sample size. "rows_in_source" is the explicit
+            # spelling the GUI reads -- both keys, one meaning.
             "rows": self.rows_in_source,
-            "rows_kind": self.rows_in_source_kind,
+            "rows_in_source": self.rows_in_source,
+            "rows_in_source_kind": self.rows_in_source_kind,
             "rows_profiled": self.rows_profiled,
             "profile_coverage": self.profile_coverage,
             "target": self.target,

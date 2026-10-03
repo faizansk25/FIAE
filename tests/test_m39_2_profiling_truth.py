@@ -156,7 +156,13 @@ class TestLearnDoesNotLieAboutRows:
         report = learn(str(big_csv), "a", config=LearnConfig(max_rows=1000))
         assert report.to_dict()["rows"] == 5000
         assert report.to_dict()["rows_profiled"] == 1000
-        assert report.to_dict()["rows_kind"] == "estimated"
+        payload = report.to_dict()
+        assert payload["rows_in_source_kind"] == "estimated"
+        # The GUI renders straight from this payload: every key it reads
+        # must exist, or it silently falls back to a wrong label.
+        for key in ("rows_in_source", "rows_in_source_kind",
+                    "rows_profiled", "profile_coverage"):
+            assert key in payload, f"GUI reads {key}, payload lacks it"
 
 
 class TestReportScansWhatItReports:
