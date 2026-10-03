@@ -47,6 +47,13 @@ def stratified_kfold_indexes(
     by_class: dict[str, list[int]] = {}
     for i, yi in enumerate(y):
         by_class.setdefault(str(yi), []).append(i)
+    # M40 (external audit): stratification is only meaningful while every
+    # class can appear in every fold. Requesting 5 folds over a minority
+    # class of 3 produced folds with no minority member at all (and a
+    # single-class validation fold, where ROC-AUC is undefined). Bound by
+    # the limiting unit -- the smallest class -- not by the row count.
+    if by_class:
+        k = max(2, min(k, min(len(idxs) for idxs in by_class.values())))
     fold_id = [0] * n
     for idxs in by_class.values():
         rng.shuffle(idxs)
@@ -94,11 +101,15 @@ def group_kfold_indexes(
 ) -> list[tuple[list[int], list[int]]]:
     """GroupKFold: no entity appears in both train and validation of a fold."""
     rng = random.Random(seed)
-    k = max(2, min(int(k), n))
     by_group: dict[Any, list[int]] = {}
     for i, g in enumerate(group_ids):
         by_group.setdefault(g, []).append(i)
     uniq = sorted(by_group)
+    # M40: bound folds by the number of unique groups. With 3 groups and
+    # k=5 the old code emitted two folds whose validation set was empty --
+    # a validation fold with no rows scores nothing and silently flattens
+    # the fold distribution.
+    k = max(2, min(int(k), n, len(uniq)))
     rng.shuffle(uniq)
     out = []
     for f in range(k):

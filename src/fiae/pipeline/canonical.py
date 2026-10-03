@@ -609,6 +609,9 @@ class HOResult:
     # fabricated fallback name.
     best_model: str = ""
     best_score: float = 0.0
+    # M40: which metric best_score is. A score without its identity is a
+    # float that could mean anything.
+    best_metric: str = ""
     search_strategy: str = "successive_halving"
     # Real TrialResults from the CV runs over routed families.
     trials: list = field(default_factory=list)
@@ -730,7 +733,11 @@ def phase_hpo(
     result = HOResult()
     try:
         from ..model_registry import ROUTING_TABLE
-        from ..orchestration.model_training import TrialRunner, TrialSpec
+        from ..orchestration.model_training import (
+            TrialRunner,
+            TrialSpec,
+            primary_metric,
+        )
 
         X: list = []
         y: list = []
@@ -767,18 +774,20 @@ def phase_hpo(
             result.trials.append(trial)
             result.trials_completed += 1
             if trial.status.name == "COMPLETED":
-                score = next(
-                    (m.value for m in trial.metrics if m.name == "quality"), None)
-                # score == score filters NaN (a non-finite CV score must never
-                # win promotion — belt-and-suspenders on top of task routing).
-                if score is not None and score == score and (
-                    best is None or score > best[1]
-                ):
-                    best = (fam, score)
+                # M40: compare only scores with the same identity. A ROC-AUC
+                # and a negated MSE are both floats; ranking them against
+                # each other is meaningless.
+                m = primary_metric(trial)
+                score = m.value if m is not None else None
+                if (m is not None and score == score
+                        and (best is None or m.name == best[2])
+                        and (best is None or score > best[1])):
+                    best = (fam, score, m.name)
 
         if best is not None:
             result.best_model = best[0]
             result.best_score = best[1]
+            result.best_metric = best[2]
         else:
             result.errors.append("all model trials failed")
     except Exception as e:
@@ -869,13 +878,15 @@ def phase_evaluate(
     """
     result = EvalResult()
     try:
+        from ..orchestration.model_training import primary_metric
+
         # Primary metric from the promoted HPO trial's real CV score.
         # M39 (external audit): a valid regression metric can be negative
         # (R^2, neg MSE). "A model ran" is decided by best_model, not by
         # the sign of the score.
         if hpo.best_model and hpo.best_score == hpo.best_score:
             result.primary_value = hpo.best_score
-            result.primary_metric = "quality"
+            result.primary_metric = hpo.best_metric or "quality"
         else:
             result.primary_value = 0.0
             result.errors.append("No model trained - evaluation based on structural analysis only")
@@ -885,7 +896,8 @@ def phase_evaluate(
         for t in (getattr(hpo, "trials", []) or []):
             if t.status.name != "COMPLETED":
                 continue
-            q = next((m.value for m in t.metrics if m.name == "quality"), None)
+            m = primary_metric(t)
+            q = m.value if m is not None else None
             if q is not None and q == hpo.best_score:
                 best_trial = t
                 break

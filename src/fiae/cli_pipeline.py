@@ -88,7 +88,7 @@ def _run_hpo(args, learn_result) -> dict:
             if getattr(res.status, "name", "") != "COMPLETED":
                 return float("-inf")  # failed trial: prune, do not score
             for m in res.metrics:
-                if m.name == "quality":
+                if m.name != "cv_std":
                     return float(m.value)
             return float("-inf")
 

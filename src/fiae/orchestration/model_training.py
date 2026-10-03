@@ -10,7 +10,7 @@ from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, Optional
 
 from ..contracts import (
     Direction, MetricValue, ResourceMeasurement, TrialResult,
@@ -118,6 +118,32 @@ def _get_sklearn_model(family: str, params: dict[str, Any]):
     return RandomForestRegressor(n_estimators=100, random_state=params.get("random_state", 42))
 
 
+def _metric_direction(scoring: str) -> Direction:
+    """Whether a scorer is maximized, from its own name.
+
+    M40 (external audit): a score must carry its identity. ``neg_*``
+    scorers are minimized -- treating them as maximized silently inverts
+    model selection.
+    """
+    return (Direction.MINIMIZE if scoring.startswith("neg_")
+            else Direction.MAXIMIZE)
+
+
+def _resolve_scorer(task: str, y: list) -> Optional[str]:
+    """The one scorer this task may be judged by.
+
+    M40: the old code silently degraded ROC-AUC to accuracy whenever the
+    labels were not binary, and every regression score was reported under
+    a single "quality" name regardless of what it measured. A task whose
+    primary metric is undefined returns None so the trial fails honestly
+    instead of reporting a number that means something else.
+    """
+    classes = set(y)
+    if task == "classification":
+        return "roc_auc" if len(classes) == 2 else None
+    return "neg_mean_squared_error"
+
+
 def _evaluate_cv(model, X, y, task: str, n_folds: int = 5, seed: int = 42) -> dict[str, float]:
     """Cross-validate a model and return metrics."""
     from collections import Counter
@@ -128,13 +154,21 @@ def _evaluate_cv(model, X, y, task: str, n_folds: int = 5, seed: int = 42) -> di
     )
     import numpy as np
 
+    scoring = _resolve_scorer(task, y)
+    if scoring is None:
+        return {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0,
+                "scoring": "failed:no_defined_primary_metric:" + task}
+
     if task == "classification":
-        scoring = "roc_auc" if len(set(y)) == 2 else "accuracy"
         # Stratify so every fold has both classes (imbalanced data would
         # otherwise yield folds with a single class -> undefined ROC-AUC).
-        n_splits = min(n_folds, max(2, len(set(y))), min(Counter(y).values()))
+        # M40: the limiting factor is how many members the *minority*
+        # class has -- not how many classes exist. Capping folds by
+        # len(set(y)) meant every binary run silently used 2 folds
+        # instead of the 5 that were requested.
+        n_splits = max(2, min(n_folds, min(Counter(y).values())))
         kf = StratifiedKFold(
-            n_splits=max(2, n_splits), shuffle=True, random_state=seed
+            n_splits=n_splits, shuffle=True, random_state=seed
         )
     else:
         scoring = "neg_mean_squared_error"
@@ -154,23 +188,33 @@ def _evaluate_cv(model, X, y, task: str, n_folds: int = 5, seed: int = 42) -> di
             "max": float(np.max(scores)),
             "scoring": scoring,
         }
-    except Exception:
-        # Fallback to simple train/test split
-        from sklearn.model_selection import train_test_split
-        X_train, X_test, y_train, y_test = train_test_split(
-            X, y, test_size=0.2, random_state=seed
-        )
-        model.fit(X_train, y_train)
-        if task == "classification":
-            score = model.score(X_test, y_test)
-        else:
-            score = -model.score(X_test, y_test)  # negative MSE
-        return {"mean": score, "std": 0.0, "min": score, "max": score, "scoring": "fallback"}
+    except Exception as exc:
+        # M40: no silent train/test fallback. It swapped ROC-AUC for
+        # accuracy on classification and reported -R^2 as if it were
+        # negative MSE for regression, then labelled both "fallback" --
+        # a score wearing the wrong name, compared against real CV scores.
+        # A trial that cannot be cross-validated fails; it does not
+        # borrow a different metric.
+        return {"mean": 0.0, "std": 0.0, "min": 0.0, "max": 0.0,
+                "scoring": f"failed:{type(exc).__name__}:{scoring}"}
 
 
 # ---------------------------------------------------------------------------
 # TrialRunner (doc 07, doc 15)
 # ---------------------------------------------------------------------------
+
+def primary_metric(trial: Any) -> Optional[MetricValue]:
+    """The trial's promoted CV metric, identified by its own name.
+
+    M40: callers used to hard-code ``name == "quality"``, which matched a
+    ROC-AUC, an accuracy and a negated MSE equally well. Read the metric
+    that carries the scorer's identity instead.
+    """
+    for m in getattr(trial, "metrics", []) or []:
+        if m.name != "cv_std":
+            return m
+    return None
+
 
 @dataclass
 class TrialRunner:
@@ -246,10 +290,15 @@ class TrialRunner:
                 pass
 
             wall_time = time.monotonic() - t0
+            scoring = str(cv_results["scoring"])
             metrics = [
+                # M40: the metric carries its own identity. "quality" was
+                # a bare float that could be a ROC-AUC, an accuracy or a
+                # negated MSE, so HPO could compare incomparable numbers.
                 MetricValue(
-                    name="quality", value=cv_results["mean"],
-                    direction=Direction.MAXIMIZE, split="cv_mean",
+                    name=scoring, value=cv_results["mean"],
+                    direction=_metric_direction(scoring), split="cv_mean",
+                    aggregation="mean",
                 ),
                 MetricValue(
                     name="cv_std", value=cv_results["std"],
