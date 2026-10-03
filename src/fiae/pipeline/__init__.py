@@ -3,6 +3,7 @@ from .canonical import (
     run_canonical_pipeline,
     CanonicalResult,
     RunContext,
+    RunStatus,
     phase_bootstrap,
     phase_intake,
     phase_validate,

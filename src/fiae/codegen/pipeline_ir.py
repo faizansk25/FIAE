@@ -173,7 +173,15 @@ def build_ir_from_proposals(
     proposals: list, source_fingerprint: str = "",
     target: str = "", task: str = "",
 ) -> PipelineIR:
-    """Build a PipelineIR from a list of FeatureProposals."""
+    """Build a PipelineIR from a list of FeatureProposals.
+
+    Identity rule: ``seen`` is keyed by the proposal's **logical** feature
+    name (``fitted_pipeline.canonical_feature_id``) and looked up with
+    ``proposal.inputs``, which are logical names too. IR node ids
+    (``n_0``, ``n_1``, …) are only ever *emitted* — never hashed or looked
+    up — so the IR layer and the fitted runtime cannot disagree about which
+    node a chained input refers to.
+    """
     ir = PipelineIR(
         source_fingerprint=source_fingerprint,
         target=target, task=task,
@@ -201,6 +209,7 @@ def build_ir_from_proposals(
         ir.add_node(node)
         # M39: feature identity includes params — must match
         # fitted_pipeline.canonical_feature_id so chained inputs resolve.
+        # M39.1: explicit rule — logical ancestry, never the node id above.
         from ..fitted_pipeline import canonical_feature_id
         seen[canonical_feature_id(proposal)] = node_id
         ir.outputs.append(node_id)

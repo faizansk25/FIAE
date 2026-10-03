@@ -9,14 +9,31 @@ Normative source: doc 15 "End-to-End FIAE Algorithm".
 
 from __future__ import annotations
 
+import contextlib
 import hashlib
 import json
 import os
 import time
 from dataclasses import dataclass, field
+from enum import Enum
 from typing import Any, Optional
 
 from ..ids import new_id, content_hash
+
+
+class RunStatus(str, Enum):
+    """Outcome of a canonical run.
+
+    M39.1 (external audit): an explicit enum, and — deliberately —
+    independent of ``phases_completed``.  ``phases_completed=10`` with
+    ``status=PARTIAL`` is a legitimate, honest combination: all ten phases
+    executed, and some recorded structured errors.  ``str`` mixin so
+    existing comparisons and JSON consumers keep working.
+    """
+
+    SUCCESS = "SUCCESS"
+    PARTIAL = "PARTIAL"
+    FAILED = "FAILED"
 
 
 # ---------------------------------------------------------------------------
@@ -1046,8 +1063,18 @@ def phase_codegen(
         with open(report_path, "w", encoding="utf-8") as f:
             json.dump(report.summary(), f, indent=2, default=str)
         code_path = os.path.join(export_dir, "features.py")
-        with open(code_path, "w", encoding="utf-8") as f:
+        # M39.1 (external audit): atomic promotion. Write the runnable
+        # artifact to a staging path first, then rename it into place, so a
+        # crash mid-write can never leave a truncated features.py that looks
+        # like a verified export. os.replace is atomic within a filesystem.
+        staging_dir = os.path.join(export_dir, ".staging")
+        os.makedirs(staging_dir, exist_ok=True)
+        staged_code = os.path.join(staging_dir, "features.py")
+        with open(staged_code, "w", encoding="utf-8") as f:
             f.write(report.generated_code)
+        os.replace(staged_code, code_path)
+        with contextlib.suppress(OSError):  # non-empty (parallel run)
+            os.rmdir(staging_dir)
         result.export_path = export_dir
         result.export_code_path = code_path
     except Exception as e:
@@ -1081,13 +1108,14 @@ class CanonicalResult:
     # PARTIAL = finished but some phase recorded errors, FAILED = a phase
     # raised. ``phases_completed`` alone could claim 10/10 on a run whose
     # HPO/evaluation/codegen phases recorded structured errors.
-    status: str = "SUCCESS"
+    # M39.1: enum, kept independent of phases_completed.
+    status: RunStatus = RunStatus.SUCCESS
 
     def summary(self) -> dict:
         return {
             "run_id": self.run_id,
             "phases_completed": self.phases_completed,
-            "status": self.status,
+            "status": self.status.value,
             "total_time_s": self.total_time_s,
             "portfolio_size": self.funnel.portfolio_size if self.funnel else 0,
             "best_model": self.hpo.best_model if self.hpo else "",
@@ -1173,7 +1201,7 @@ def run_canonical_pipeline(
 
     except Exception as e:
         result.errors.append(f"Pipeline error: {e}")
-        result.status = "FAILED"
+        result.status = RunStatus.FAILED
 
     # M39: aggregate every phase's structured errors — only intake errors
     # were promoted before, so later-phase errors could hide behind a
@@ -1184,8 +1212,8 @@ def run_canonical_pipeline(
         for err in getattr(phase_result, "errors", []) or []:
             if err not in result.errors:
                 result.errors.append(err)
-    if result.status != "FAILED" and result.errors:
-        result.status = "PARTIAL"
+    if result.status != RunStatus.FAILED and result.errors:
+        result.status = RunStatus.PARTIAL
 
     result.total_time_s = time.monotonic() - t0
     return result

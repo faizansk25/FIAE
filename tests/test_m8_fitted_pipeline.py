@@ -5,7 +5,12 @@ from __future__ import annotations
 import random
 
 
-from fiae.fitted_pipeline import FittedPipeline, _needs_fit, _coerce_to_floats
+from fiae.fitted_pipeline import (
+    FittedPipeline,
+    _coerce_to_floats,
+    _needs_fit,
+    feature_identity,
+)
 from fiae.features.registry import all_operators, get_operator
 from fiae.search.triggers import FeatureProposal
 
@@ -148,7 +153,7 @@ class TestFittedPipelineRareGroup:
         train = {"color": ["red"] * 10 + ["blue"] * 2 + ["green"]}
         _result = pipe.fit(proposals, train)
         # _to_float_list converts strings to 0.0, so verify via state
-        state = pipe.states["rare_group(color)"].fit_state
+        state = pipe.states[feature_identity(proposals[0])].fit_state
         assert "red" in state["retained"]
         assert "blue" not in state["retained"]
         assert "green" not in state["retained"]
@@ -165,7 +170,11 @@ class TestFittedPipelineState:
         ]
         pipe.fit(proposals, {"x": [1.0, 2.0, 3.0, 4.0, 5.0]})
         state_dict = pipe.get_state_dict()
-        assert "standardize(x)" in state_dict
+        # M39.1: state keys are collision-free identities; the readable name
+        # travels inside the record.
+        assert feature_identity(proposals[0]) in state_dict
+        assert state_dict[feature_identity(proposals[0])]["display_name"] \
+            == "standardize(x)"
 
         pipe2 = FittedPipeline()
         pipe2.load_state_dict(state_dict)
@@ -308,7 +317,7 @@ class TestDoc01Invariants:
         ]
         # Fit on training
         pipe.fit(proposals, {"x": ["a", "a", "b"]})
-        state = pipe.states["frequency_encode(x)"].fit_state
+        state = pipe.states[feature_identity(proposals[0])].fit_state
         # Should have freq_map with a=2/3, b=1/3
         assert "frequency_map" in state
 

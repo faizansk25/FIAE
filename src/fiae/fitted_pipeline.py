@@ -20,6 +20,7 @@ from typing import Any, Optional
 
 from .contracts import FitScope
 from .features.registry import FeatureOperator, get_operator
+from .ids import canonical_json, feature_id_for
 from .search.triggers import FeatureProposal
 
 
@@ -27,24 +28,75 @@ from .search.triggers import FeatureProposal
 _FIT_REQUIRED_SCOPES = frozenset({FitScope.TRAINING_FOLD, FitScope.DEVELOPMENT})
 
 
-def canonical_feature_id(proposal: FeatureProposal) -> str:
-    """Unique, deterministic feature ID: op + ordered inputs + params.
+def _logical_inputs(proposal: FeatureProposal) -> list[str]:
+    """Proposal inputs with the ``raw:`` marker dropped.
 
-    M39 (external audit): params are part of a feature's identity. The old
-    name (op + inputs only) made ``winsorize(age, 0.01/0.99)`` and
-    ``winsorize(age, 0.05/0.95)`` the same key, so one fitted state and one
-    output column silently overwrote the other.
+    Identity rule (single rule, every layer): a feature is named from its
+    **logical ancestry** — the op plus its logical input names — never from
+    IR node ids.  ``fitted_pipeline`` (fit state + output columns),
+    ``learn.py`` Phase 8, ``canonical.phase_funnel`` and
+    ``codegen.pipeline_ir.build_ir_from_proposals`` all call the two helpers
+    below, so the four layers agree by construction.
     """
-    base = proposal.op + "(" + "_".join(
-        inp[4:] if inp.startswith("raw:") else inp
-        for inp in proposal.inputs
-    ) + ")"
+    return [inp[4:] if inp.startswith("raw:") else inp for inp in proposal.inputs]
+
+
+def _format_param_value(value: Any) -> str:
+    """Render one param value unambiguously for the human-readable name.
+
+    Scalars keep the readable ``lower=0.05`` form; anything composite is
+    canonical JSON, so ``{"a": "x,y=z"}`` and ``{"a": "x", "y": "z"}`` can
+    never render to the same text.
+    """
+    if isinstance(value, bool):
+        return "true" if value else "false"
+    if isinstance(value, float):
+        if math.isnan(value):
+            return "NaN"
+        if math.isinf(value):
+            return "Infinity" if value > 0 else "-Infinity"
+        return repr(value)
+    if isinstance(value, (int, str)):
+        return repr(value)
+    return canonical_json(value)
+
+
+def canonical_feature_id(proposal: FeatureProposal) -> str:
+    """Human-readable feature name: op + ordered logical inputs + params.
+
+    M39: params are part of a feature's name.  The old name (op + inputs
+    only) made ``winsorize(age, 0.01/0.99)`` and ``winsorize(age,
+    0.05/0.95)`` the same key, so one fitted state and one output column
+    silently overwrote the other.
+
+    M39.1 (external audit): values are canonicalized, not just key-sorted
+    — NaN/Inf are explicit, bools do not print as ints, composite values
+    render as canonical JSON.  This name is for humans and dict keys;
+    machine identity is :func:`feature_identity`.
+    """
+    base = proposal.op + "(" + "_".join(_logical_inputs(proposal)) + ")"
     if proposal.params:
         kv = ",".join(
-            f"{k}={proposal.params[k]}" for k in sorted(proposal.params)
+            f"{k}={_format_param_value(proposal.params[k])}"
+            for k in sorted(proposal.params, key=str)
         )
         base += "[" + kv + "]"
     return base
+
+
+def feature_identity(proposal: FeatureProposal) -> str:
+    """Collision-free machine identity for a feature (doc 13, doc 04).
+
+    ``ids.feature_id_for`` hashes the canonical serialization, so nested
+    containers, unordered sets, numpy-like scalars, bool-vs-int, NaN and
+    separator-bearing strings are all distinct *by construction* rather
+    than by string formatting.  This is what keys persisted fit state.
+    """
+    return feature_id_for({
+        "op": proposal.op,
+        "inputs": _logical_inputs(proposal),
+        "params": dict(proposal.params),
+    })
 
 
 def _needs_fit(op: FeatureOperator) -> bool:
@@ -72,9 +124,12 @@ class FittedState:
     """Fit state for one operator application."""
 
     op_name: str
-    feature_id: str
+    feature_id: str  # feature_identity(): collision-free machine identity
     params: dict[str, Any] = field(default_factory=dict)
     fit_state: dict[str, Any] = field(default_factory=dict)
+    # M39.1: the readable name travels with the state so a persisted state
+    # dict stays diagnosable without re-deriving it from params.
+    display_name: str = ""
 
 
 @dataclass
@@ -105,6 +160,7 @@ class FittedPipeline:
 
         for proposal in proposals:
             feat_name = canonical_feature_id(proposal)
+            feat_id = feature_identity(proposal)
 
             op = get_operator(proposal.op)
             input_arrays = self._get_inputs(proposal, columnar_data)
@@ -128,10 +184,11 @@ class FittedPipeline:
 
                 # Store fit state
                 state = FittedState(
-                    op_name=op.name, feature_id=feat_name,
+                    op_name=op.name, feature_id=feat_id,
                     params=dict(proposal.params), fit_state=fit_state,
+                    display_name=feat_name,
                 )
-                self.states[feat_name] = state
+                self.states[feat_id] = state
 
                 # Transform using fitted state
                 try:
@@ -179,6 +236,7 @@ class FittedPipeline:
 
         for proposal in proposals:
             feat_name = canonical_feature_id(proposal)
+            feat_id = feature_identity(proposal)
 
             op = get_operator(proposal.op)
             input_arrays = self._get_inputs(proposal, columnar_data)
@@ -190,7 +248,7 @@ class FittedPipeline:
 
             if _needs_fit(op):
                 # Use stored fit state
-                stored = self.states.get(feat_name)
+                stored = self.states.get(feat_id)
                 if stored is None:
                     continue  # not fitted
                 try:
@@ -215,24 +273,26 @@ class FittedPipeline:
         return results
 
     def get_state_dict(self) -> dict[str, Any]:
-        """Serialize all fit states for persistence."""
+        """Serialize all fit states for persistence (keyed by identity)."""
         result = {}
         for fid, state in self.states.items():
             result[fid] = {
                 "op_name": state.op_name,
+                "display_name": state.display_name,
                 "params": state.params,
                 "fit_state": state.fit_state,
             }
         return result
 
     def load_state_dict(self, data: dict[str, Any]) -> None:
-        """Load fit states from serialized dict."""
+        """Load fit states from serialized dict (keys are identities)."""
         for fid, entry in data.items():
             self.states[fid] = FittedState(
                 op_name=entry["op_name"],
                 feature_id=fid,
                 params=entry.get("params", {}),
                 fit_state=entry.get("fit_state", {}),
+                display_name=entry.get("display_name", ""),
             )
 
     # ------------------------------------------------------------------
