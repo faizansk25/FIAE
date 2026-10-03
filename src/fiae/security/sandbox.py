@@ -101,6 +101,11 @@ class SandboxResult:
     error: Optional[str] = None
     execution_time_s: float = 0.0
     warnings: list[str] = field(default_factory=list)
+    # W-6 (M38.5): True when the worker thread was confirmed unwound before
+    # ``run_in_sandbox`` returned.  Callers must assert *this*, never a
+    # process-wide thread count: unrelated threads (server job workers, HTTP
+    # handlers) are legitimate and make any global count meaningless.
+    thread_reaped: bool = True
 
 
 def _interrupt_thread(thread: threading.Thread) -> None:
@@ -239,6 +244,7 @@ def run_in_sandbox(
             error=f"Execution timed out after {policy.max_execution_time_s}s",
             execution_time_s=policy.max_execution_time_s,
             warnings=[warning],
+            thread_reaped=interrupted,
         )
 
     if result_holder:

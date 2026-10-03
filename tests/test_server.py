@@ -50,12 +50,18 @@ def server(tmp_path):
 
     from http.server import ThreadingHTTPServer
     handler = make_handler(JobRegistry(), str(runs_dir))
+    # M38.5: stop the implicit job pool + close the socket (was leaking 4
+    # worker threads and a listening port per fixture instance).
+    pool = handler.job_pool
     httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
     port = httpd.server_address[1]
     t = threading.Thread(target=httpd.serve_forever, daemon=True)
     t.start()
     yield f"http://127.0.0.1:{port}"
     httpd.shutdown()
+    httpd.server_close()
+    pool.shutdown(wait=True)
+    t.join(timeout=5)
 
 
 def _get(base, path):

@@ -6,7 +6,6 @@ was declared but never enforced.  These tests pin the fixed behavior.
 """
 
 import threading
-import time
 
 
 from fiae.security.sandbox import SandboxPolicy, run_in_sandbox
@@ -34,15 +33,17 @@ class TestW6RunawayThreadInterrupt:
 
         assert not result.success
         assert "timed out" in (result.error or "")
-        # The async interrupt must land: wait (bounded) for the thread to
-        # fully exit rather than racing active_count() under suite load.
-        deadline = time.monotonic() + 5.0
-        while threading.active_count() >= 2 and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert threading.active_count() < 2, (
-            "runaway sandbox thread is still alive after timeout — W-6 regressed"
-        )
-        marker.set()
+        # M38.5: assert the sandbox reaped *its own* thread.  The previous
+        # assertion was ``threading.active_count() < 2`` — a process-global
+        # proxy that any unrelated live thread (a JobWorkerPool worker from
+        # an earlier test) breaks, which turned this into a whole-suite CI
+        # failure on every matrix job.
+        try:
+            assert result.thread_reaped, (
+                "runaway sandbox thread survived the timeout — W-6 regressed"
+            )
+        finally:
+            marker.set()
 
     def test_interrupt_result_reports_warning(self):
         policy = SandboxPolicy(max_execution_time_s=0.5)

@@ -55,6 +55,10 @@ class TestDashboardEscapesHtml:
         reg.complete(jid, {"portfolio_size": 1})
 
         handler = make_handler(reg, str(runs_dir))
+        # M38.5: make_handler's implicit pool must be stopped, otherwise its
+        # 4 worker threads outlive the test and break any later test that
+        # inspects process-wide state (this is what reddened CI).
+        pool = handler.job_pool
         httpd = ThreadingHTTPServer(("127.0.0.1", 0), handler)
         port = httpd.server_address[1]
         t = threading.Thread(target=httpd.serve_forever, daemon=True)
@@ -67,3 +71,6 @@ class TestDashboardEscapesHtml:
             assert "&lt;script&gt;alert(1)&lt;/script&gt;" in body
         finally:
             httpd.shutdown()
+            httpd.server_close()
+            pool.shutdown(wait=True)
+            t.join(timeout=5)

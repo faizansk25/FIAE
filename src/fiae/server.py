@@ -338,6 +338,9 @@ def make_handler(
     if pool is None:
         pool = JobWorkerPool(registry)
         pool.start()
+        # M38.5: this pool was unreachable, so its 4 worker threads ran for
+        # the life of the process with no way to stop them.  It is published
+        # on the handler class below so embedders can ``pool.shutdown()``.
     if limiter is None:
         limiter = RateLimiter()
 
@@ -701,6 +704,9 @@ POST /api/profile · <a href="/gui" style="color:#a78bfa">Open GUI</a></footer>
             self.end_headers()
             self.wfile.write(body)
 
+    # M38.5: always published, so callers can stop the pool regardless of
+    # whether they passed one in or let make_handler create it.
+    FIAEHandler.job_pool = pool
     return FIAEHandler
 
 
