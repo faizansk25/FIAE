@@ -76,6 +76,43 @@ class TestIdentityCanonicalizesValues:
         assert pipe.get_state_dict()[feature_identity(p)]["display_name"] \
             == "standardize(x)"
 
+    def test_machine_identity_is_pinned_not_derived_from_the_display_name(self):
+        """Literal values, deliberately.
+
+        Every other test in this file compares ``feature_identity(p)``
+        against ``feature_identity(p)``. That is tautological: reverting the
+        implementation to return the display name leaves all of them green,
+        because the expected value moves with the bug. These two literals do
+        not move.
+
+        They encode the audit's invariant: the display name may be reformatted
+        in a future major version, but the machine identity must not silently
+        change. Changing either the payload or ``ids``'s serialization is an
+        artifact-schema compatibility event, and this test is where it shows.
+        """
+        p = FeatureProposal(op="standardize", inputs=["raw:x"])
+        assert canonical_feature_id(p) == "standardize(x)"
+        assert feature_identity(p) == "f_fdf682130304a50fc8655bae"
+
+        q = FeatureProposal(op="winsorize", inputs=["raw:age"],
+                            params={"lower": 0.05, "upper": 0.95})
+        assert canonical_feature_id(q) == "winsorize(age)[lower=0.05,upper=0.95]"
+        assert feature_identity(q) == "f_b12edfbb904098947feb7063"
+
+    def test_identity_is_never_the_display_string(self):
+        # Two different kinds of string, by construction, not by luck.
+        for p in (FeatureProposal(op="standardize", inputs=["raw:x"]),
+                  FeatureProposal(op="log1p", inputs=["raw:income"],
+                                  params={"eps": 1e-6})):
+            assert feature_identity(p) != canonical_feature_id(p)
+            assert feature_identity(p).startswith("f_")
+
+    def test_saved_state_is_keyed_by_the_pinned_identity(self):
+        pipe = FittedPipeline()
+        p = FeatureProposal(op="standardize", inputs=["raw:x"])
+        pipe.fit([p], {"x": [1.0, 2.0, 3.0]})
+        assert list(pipe.states) == ["f_fdf682130304a50fc8655bae"]
+
     def test_state_dict_round_trip_is_keyed_by_identity(self):
         pipe = FittedPipeline()
         p = FeatureProposal(op="standardize", inputs=["raw:x"])

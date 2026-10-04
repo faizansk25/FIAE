@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1058%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1151%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -707,20 +707,49 @@ ruff check src/ tests/
 mypy src/fiae/
 ```
 
+### Mutation check — do the tests actually pin the fixes?
+
+A green suite only says the tests pass, not that they pass *because* a fix is
+present. That gap is real and was found by audit: one M40 commit shipped 1134
+green tests, and putting the exact pre-fix comparison back into `phase_hpo`
+left every one of them green. The fix worked, but nothing held it in place.
+
+[tools/mutation_check.py](tools/mutation_check.py) closes that hole. Each guard
+names an audited finding, the source text that expresses the fix, the text that
+expresses the bug, and the tests that must fail when the bug returns:
+
+```bash
+python tools/mutation_check.py            # revert each fix, prove tests notice
+python tools/mutation_check.py --list     # show the registry
+python tools/mutation_check.py --verify   # anchor check only, mutates nothing
+python tools/mutation_check.py --only m40_hpo_selection_obeys_direction --verbose
+```
+
+Deliberately not general-purpose mutation testing: no random mutants, no
+per-line instrumentation. Every mutation is the reversion of a defect an
+external audit actually found. The tool refuses to run on a dirty tracked tree,
+restores each mutated file from its original bytes, and verifies the restore
+byte-for-byte. It never commits or pushes.
+
+`tests/test_mutation_registry.py` is the tool's own canary: it fails if an
+anchor is duplicated, missing, or a no-op, so a refactor that moves a guard's
+anchor cannot silently turn it into a permanent pass.
+
 ### Continuous integration
 
 Every push and pull request runs [.github/workflows/ci.yml](.github/workflows/ci.yml):
 
 | Job | What it does |
 |---|---|
-| **lint** | `ruff check src/fiae tests` — the enforced lint baseline (0 findings) |
+| **lint** | `ruff check src/fiae tests tools` — the enforced lint baseline (0 findings) |
+| **mutation-check** | Reverts each audited fix in turn and fails if the suite does not notice. `continue-on-error` on pull requests (report only), enforced on pushes to `main` |
 | **test** | Full suite **plus an end-to-end example smoke**, on a 3 OS × 3 Python matrix (Ubuntu/Windows/macOS × 3.10/3.11/3.12), with JUnit reports and per-matrix summaries |
 | **coverage** | Suite run under `pytest-cov`; `coverage.xml` published as a run artifact |
 
 Tests run against the source tree (the core is stdlib-only; no Cython build in CI). Packaging is exercised by the [release workflow](.github/workflows/release.yml) on tags: platform wheels (Cython-compiled) are built on 3 OSes, **each verified before publishing** — installed into a clean environment, import-path-checked (`site-packages`), full suite + example smoke run against the installed package, and only then pushed to PyPI via trusted publishing. The CI commands also run locally:
 
 ```bash
-ruff check src/fiae tests
+ruff check src/fiae tests tools
 python -m pytest tests/
 python examples/churn/run_api.py
 ```
@@ -751,7 +780,7 @@ python examples/churn/run_api.py
 | **Security** | `test_security*.py` | 15 | Resource limits, input validation, audit logging |
 | **Misc** | `test_m*.py` | 200+ | Milestone integration tests (M3–M13) |
 | **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | 110+ | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
-| **Total** | **54 files** | **1058** | |
+| **Total** | **67 files** | **1151** | |
 
 ---
 
@@ -799,7 +828,8 @@ fiae/
 │   ├── search/                 # Feature search
 │   ├── security/               # Security
 │   └── testing/                # Testing
-├── tests/                      # Test suite (1058 tests)
+├── tools/                      # Dev tooling (mutation-check harness)
+├── tests/                      # Test suite (1151 tests)
 ├── pyproject.toml              # Build config & dependencies
 ├── conftest.py                 # Test infrastructure
 ├── README.md                   # This file
@@ -832,7 +862,7 @@ fiae/
 - [x] Bounded-concurrency REST server: worker pool, 429 backpressure,
       per-client rate limiting, load-tested with 200 simultaneous clients
 - [x] `fiae connect` universal source connector
-- [x] 1058 passing tests, incl. property-based & adversarial suites
+- [x] 1151 passing tests, incl. property-based & adversarial suites
 - [x] Real-data validation on 20-type 100K-row dataset
 
 ### Planned

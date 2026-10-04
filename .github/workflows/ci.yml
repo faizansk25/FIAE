@@ -62,7 +62,7 @@ jobs:
       - name: Install ruff
         run: pip install ruff
       - name: Lint (enforced baseline - zero findings)
-        run: ruff check src/fiae tests
+        run: ruff check src/fiae tests tools
 
   test:
     runs-on: ${{ matrix.os }}
@@ -91,6 +91,28 @@ jobs:
           name: pytest-${{ matrix.os }}-${{ matrix.python-version }}
           path: pytest-results.xml
           if-no-files-found: ignore
+
+  mutation-check:
+    # A green suite does not prove the tests fail when a fix is reverted.
+    # This job reverts each audited fix in turn and fails if the suite does
+    # not notice. Report-only on pull requests (a branch may legitimately be
+    # mid-refactor); enforced on pushes to main, where an unpinned fix is a
+    # hole that survives forever. Needs its own clean checkout: the tool
+    # refuses to run against a dirty tracked tree.
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: ${{ github.event_name == 'pull_request' }}
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: "3.12"
+      - name: Install dev + tier1 dependencies
+        run: pip install -e ".[dev,tier1]"
+      - name: Verify guard anchors are not stale
+        run: python tools/mutation_check.py --verify
+      - name: Revert each audited fix; the suite must notice
+        run: python tools/mutation_check.py --verbose
 
   coverage:
     runs-on: ubuntu-latest

@@ -50,12 +50,17 @@ class TestReadmeFileReferences:
 
 
 class TestReadmeCountClaims:
-    def test_tests_badge_matches_collected(self, pytestconfig):
+    def test_tests_badge_matches_collected(self, request):
         readme = _readme()
         m = re.search(r"tests-(\d+)(?:%20|-)passing", readme)
         assert m, "tests badge missing from README"
         badge = int(m.group(1))
-        collected = getattr(pytestconfig, "item_count", None)
+        # `config.item_count` is only populated under --collect-only, so on an
+        # ordinary `pytest tests/` run this attribute was None and the whole
+        # assertion was skipped: the guard passed vacuously while the badge
+        # drifted ~90 tests out of date.  `Session.testscollected` is set by
+        # pytest after collection on every run, so this now really fires.
+        collected = getattr(request.session, "testscollected", None)
         if collected and collected > 700:
             # Full-suite run: badge must track collection within tolerance
             # for tests added/removed between README edits.
