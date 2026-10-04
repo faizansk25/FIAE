@@ -18,7 +18,7 @@ import pytest
 
 sklearn = pytest.importorskip("sklearn")
 
-from fiae.contracts import Direction, MetricValue, TrialStatus
+from fiae.contracts import Direction, MetricValue, Task, TrialStatus
 from fiae.orchestration.model_training import (
     TrialRunner,
     TrialSpec,
@@ -316,3 +316,139 @@ class TestEnsembleHonesty:
                   self._trial("b", name="mse", direction=Direction.MINIMIZE)]
         assert [t.trial_id
                 for t in check_eligibility(trials, EnsemblePolicy())] == ["a"]
+
+
+class TestMulticlassProbeIsActuallyOneVsRest:
+    """Item 3: the old probe solved one ridge against the raw class index
+    and compared that single prediction vector with every OVR target."""
+
+    def test_each_class_gets_its_own_fit(self, monkeypatch):
+        from fiae import probe
+
+        fits: list[list[float]] = []
+        real = probe._solve_normal_equations
+
+        def spy(a, b, lam=1e-6):
+            fits.append(list(b))
+            return real(a, b, lam)
+
+        monkeypatch.setattr(probe, "_solve_normal_equations", spy)
+        probe._cv_metric(
+            [[0.0, 1.0, 0.0, 1.0], [1.0, 0.0, 1.0, 0.0]],
+            [0.0, 1.0, 2.0, 0.0],
+            [([0, 1], [2, 3])], Task.MULTICLASS, 1e-6,
+        )
+        # One solve per class per fold (3 classes, 1 fold), not one per fold.
+        assert len(fits) == 3
+        # Each fit gets its own binary target -- the old code passed the
+        # raw class index once and reused the result three times.
+        assert fits == [[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]]
+
+    def test_one_row_gets_a_distinct_vector_per_class(self):
+        from fiae.probe import _multiclass_ovr_scores
+
+        classes = [0, 1, 2]
+        y = [0.0, 1.0, 2.0, 2.0, 1.0, 0.0]
+        scores = _multiclass_ovr_scores(
+            [[0.0, 1.0, 2.0, 3.0, 4.0, 5.0]], y, [0, 1, 2], [3, 4, 5],
+            classes, 1e-6,
+        )
+        assert len(scores) == 3
+        for row in scores:
+            # A shared prediction vector cannot do this; these are per-class.
+            assert len({round(v, 12) for v in row}) == len(classes)
+            assert all(0.0 <= v <= 1.0 for v in row)
+            assert abs(sum(row) - 1.0) < 1e-9
+
+    def test_each_row_scores_its_own_class_highest(self):
+        from fiae.probe import _multiclass_ovr_scores
+
+        # Three clusters, all present in the training fold, linearly
+        # separable one-vs-rest. (A single 1-D ordered band is *not*:
+        # one hyperplane per class cannot carve three intervals, which is
+        # a real limit of a linear probe and not something OVR can fix.)
+        jitter = [-0.5, -0.2, 0.1, 0.3, 0.5]
+        y = [0.0] * 5 + [1.0] * 5 + [2.0] * 5
+        x1 = jitter + [10.0 + v for v in jitter] + jitter
+        x2 = jitter + jitter + [10.0 + v for v in jitter]
+        scores = _multiclass_ovr_scores(
+            [x1, x2], y, [0, 1, 6, 7, 12, 13], [3, 9, 14], [0, 1, 2], 1e-6,
+        )
+        assert [max(range(3), key=lambda j: row[j]) for row in scores] == [0, 1, 2]
+
+    def test_degenerate_probe_reports_uniform_not_a_crash(self):
+        """All-zero targets leave nothing to distribute; uniform is the
+        no-information answer."""
+        from fiae.probe import _multiclass_ovr_scores
+
+        scores = _multiclass_ovr_scores(
+            [[1.0, 1.0]], [0.0, 1.0], [0, 1], [0], [0, 1], 1e-6,
+        )
+        assert scores == [[0.5, 0.5]]
+
+    def test_measure_is_not_called_brier(self):
+        """Clipped linear-probe output is not a calibrated probability, so
+        the name must not claim a proper scoring rule it has not earned."""
+        from fiae.probe import probe_metric_name
+
+        assert probe_metric_name(Task.MULTICLASS) == "multiclass_ovr_sq_error"
+        assert probe_metric_name(Task.REGRESSION) == "rmse"
+        assert probe_metric_name(Task.BINARY) == "brier"
+
+    def test_f3_records_which_measure_it_used(self):
+        from fiae.probe import f3_incremental_probe
+        from fiae.search.records import FeatureAcceptanceRecord
+
+        rng = random.Random(0)
+        x = [rng.random() for _ in range(400)]
+        y = [0 if v < 0.33 else (1 if v < 0.66 else 2) for v in x]
+        rec = FeatureAcceptanceRecord(feature_id="c", operator="c")
+        v = f3_incremental_probe(rec, [], x, y, Task.MULTICLASS)
+        assert v.metrics["metric_name"] == "multiclass_ovr_sq_error"
+
+    def test_f3_f4_f6_all_name_their_measure(self):
+        from fiae.evaluate import f4_progressive_eval, f6_final_stability
+        from fiae.probe import f3_incremental_probe
+        from fiae.search.records import FeatureAcceptanceRecord
+
+        rng = random.Random(1)
+        n = 400
+        x = [rng.random() for _ in range(n)]
+        y = [0 if v < 0.33 else (1 if v < 0.66 else 2) for v in x]
+
+        rec = FeatureAcceptanceRecord(feature_id="c", operator="c")
+        v3 = f3_incremental_probe(rec, [], x, y, Task.MULTICLASS)
+        assert v3.metrics["metric_name"] == "multiclass_ovr_sq_error"
+
+        rec4 = FeatureAcceptanceRecord(feature_id="c", operator="c")
+        v4 = f4_progressive_eval(rec4, [], x, y, Task.MULTICLASS)
+        assert v4.metrics["metric_name"] == "multiclass_ovr_sq_error"
+
+        rec6 = FeatureAcceptanceRecord(feature_id="c", operator="c")
+        v6 = f6_final_stability(rec6, [], x, y, Task.MULTICLASS)
+        assert v6.metrics["metric_name"] == "multiclass_ovr_sq_error"
+
+    def test_informative_multiclass_feature_is_still_accepted(self):
+        from fiae.probe import f3_incremental_probe
+        from fiae.search.records import FeatureAcceptanceRecord
+
+        rng = random.Random(0)
+        n = 600
+        x = [rng.random() for _ in range(n)]
+        y = [0 if v < 0.33 else (1 if v < 0.66 else 2) for v in x]
+        rec = FeatureAcceptanceRecord(feature_id="c", operator="c")
+        v = f3_incremental_probe(rec, [], x, y, Task.MULTICLASS)
+        assert v.passed, "informative feature rejected under corrected OVR"
+        assert rec.incremental_gain and rec.incremental_gain > 0.01
+
+    def test_pure_noise_still_rejected(self):
+        from fiae.probe import f3_incremental_probe
+        from fiae.search.records import FeatureAcceptanceRecord
+
+        rng = random.Random(7)
+        n = 400
+        y = [float(rng.randrange(3)) for _ in range(n)]
+        noise = [rng.random() for _ in range(n)]
+        rec = FeatureAcceptanceRecord(feature_id="c", operator="c")
+        v = f3_incremental_probe(rec, [], noise, y, Task.MULTICLASS)
+        assert not v.passed

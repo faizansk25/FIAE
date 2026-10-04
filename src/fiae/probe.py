@@ -72,6 +72,83 @@ def _brier(pred: Sequence[float], y: Sequence[float], rows: Sequence[int]) -> fl
     ) / max(len(rows), 1)
 
 
+def probe_metric_name(task: Task) -> str:
+    """What ``_cv_metric`` actually measures for ``task`` (M40).
+
+    The name is returned rather than assumed so F3/F4/F6 record it
+    alongside the number instead of leaving the reader to infer it.
+    """
+    if task is Task.REGRESSION:
+        return "rmse"
+    if task is Task.MULTICLASS:
+        return "multiclass_ovr_sq_error"
+    return "brier"
+
+
+def _multiclass_ovr_scores(
+    columns: list[Sequence[float]],
+    y: list[float],
+    train: Sequence[int],
+    val: Sequence[int],
+    classes: Sequence[int],
+    lam: float,
+) -> list[list[float]]:
+    """One independent probe per class; returns ``p_c`` for each row of val.
+
+    M40 (external audit): the previous probe solved a single ridge against
+    the *raw class index* and then compared that one prediction vector with
+    every one-vs-rest target. That is not one-vs-rest -- it scored the same
+    number against three different truths, so the number carried no class
+    information at all.
+
+    Each class now gets its own fit on its own binary target, so class c's
+    score can genuinely differ from class c' 's for the same row.
+
+    The scores are linear-probe outputs clipped to [0, 1] and normalized to
+    sum to 1 per row. They are *not* calibrated probabilities, which is why
+    the measure is named ``multiclass_ovr_sq_error`` and not "Brier":
+    Brier is a proper scoring rule for calibrated probabilities, and this
+    probe does not claim calibration.
+    """
+    design_train = _design(columns, list(train))
+    design_val = _design(columns, list(val))
+    raw: list[list[float]] = []
+    for c in classes:
+        target = [1.0 if int(y[r]) == c else 0.0 for r in train]
+        w = _solve_normal_equations(design_train, target, lam)
+        raw.append([
+            min(max(sum(wi * xi for wi, xi in zip(w, row)), 0.0), 1.0)
+            for row in design_val
+        ])
+    n_classes = len(classes)
+    if n_classes == 0:
+        return []
+    out: list[list[float]] = []
+    for i in range(len(val)):
+        col = [raw[j][i] for j in range(n_classes)]
+        total = sum(col)
+        # Degenerate: every probe collapsed to 0, so there is no evidence to
+        # distribute. Uniform is the no-information answer, not a claim.
+        out.append([v / total for v in col] if total > 0
+                   else [1.0 / n_classes] * n_classes)
+    return out
+
+
+def _multiclass_ovr_sq_error(
+    probs: list[list[float]],
+    y: list[float],
+    rows: Sequence[int],
+    classes: Sequence[int],
+) -> float:
+    """Mean squared one-vs-rest score error over rows and classes."""
+    total = 0.0
+    for i, r in enumerate(rows):
+        for j, c in enumerate(classes):
+            truth = 1.0 if int(y[r]) == c else 0.0
+            total += (probs[i][j] - truth) ** 2
+    return total / (max(len(rows), 1) * max(len(classes), 1))
+
+
 def _cv_metric(
     columns: list[Sequence[float]],
     y: list[float],
@@ -80,14 +157,16 @@ def _cv_metric(
     lam: float,
 ) -> float:
     errs: list[float] = []
-    # M36: multiclass targets use one-vs-rest Brier per class instead of the
-    # meaningless "Brier on the raw class index".
-    n_classes = sorted({int(v) for v in y}) if task is Task.MULTICLASS else None
-    ovr: dict[int, list[float]] = ({
-        c: [1.0 if int(v) == c else 0.0 for v in y] for c in n_classes
-    } if n_classes else {})
+    classes = sorted({int(v) for v in y}) if task is Task.MULTICLASS else None
     for train, val in folds:
         if not train or not val:
+            continue
+        if classes:
+            # M40: a separate probe per class, never one shared prediction.
+            errs.append(_multiclass_ovr_sq_error(
+                _multiclass_ovr_scores(columns, y, train, val, classes, lam),
+                y, val, classes,
+            ))
             continue
         w = _solve_normal_equations(_design(columns, train),
                                     [y[r] for r in train], lam)
@@ -95,14 +174,8 @@ def _cv_metric(
             continue
         pred = [sum(wi * xi for wi, xi in zip(w, row))
                 for row in _design(columns, val)]
-        if ovr:
-            per_class = [
-                _brier(pred, ovr[c], val) for c in n_classes
-            ]
-            errs.append(sum(per_class) / len(per_class))
-        else:
-            f = _rmse if task is Task.REGRESSION else _brier
-            errs.append(f(pred, y, val))
+        f = _rmse if task is Task.REGRESSION else _brier
+        errs.append(f(pred, y, val))
     return sum(errs) / len(errs) if errs else float("inf")
 
 
@@ -134,6 +207,7 @@ def f3_incremental_probe(
     with_m = _cv_metric([*base_columns, candidate], y, folds, task,
                         policy.ridge_lambda)
     gain = base_m - with_m  # both metrics: lower is better
+    metrics["metric_name"] = probe_metric_name(task)
     metrics["metric_base"] = round(base_m, 6)
     metrics["metric_with_candidate"] = round(with_m, 6)
 

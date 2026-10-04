@@ -14,7 +14,7 @@ from dataclasses import dataclass
 from typing import Optional
 
 from .contracts import Task
-from .probe import ProbePolicy, _cv_metric
+from .probe import ProbePolicy, _cv_metric, probe_metric_name
 from .problem.splits import kfold_indexes
 from .search.records import FeatureAcceptanceRecord, StageVerdict
 
@@ -59,7 +59,7 @@ def f4_progressive_eval(
     """F4: measure the candidate's gain at increasing row budgets."""
     policy = policy or EvaluatePolicy()
     n = len(y)
-    metrics: dict = {"stages": []}
+    metrics: dict = {"stages": [], "metric_name": probe_metric_name(task)}
     if n == 0 or any(len(c) != n for c in [*base_columns, candidate]):
         v = StageVerdict("F4", False, "length mismatch or empty target", metrics)
         record.add_stage(v)
@@ -109,7 +109,7 @@ def f6_final_stability(
     """F6: re-measure the gain across independent CV seeds."""
     policy = policy or EvaluatePolicy()
     n = len(y)
-    metrics: dict = {"seeds": []}
+    metrics: dict = {"seeds": [], "metric_name": probe_metric_name(task)}
     if n == 0 or any(len(c) != n for c in [*base_columns, candidate]):
         v = StageVerdict("F6", False, "length mismatch or empty target", metrics)
         record.add_stage(v)
