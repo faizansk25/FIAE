@@ -209,6 +209,21 @@ GUARDS: tuple[Guard, ...] = (
         targets=("tests/test_m38_correctness.py", "tests/test_server.py"),
     ),
     Guard(
+        name="m40_1_json_depth_ceiling_is_enforced_not_relied_on",
+        milestone="M40.1",
+        path="src/fiae/intake/adapter_file.py",
+        finding="The JSON/NDJSON nesting guard caught RecursionError from "
+                "json.load instead of counting depth, so MAX_JSON_DEPTH was "
+                "never read by any code path. CPython 3.12+ parses a "
+                "2000-deep array without recursing: the guard silently did "
+                "nothing there, and the 24 tests that would have noticed had "
+                "been skipped in CI for months.",
+        fixed="            if _exceeds_json_depth(f, self.MAX_JSON_DEPTH):\n"
+              "                raise _nesting_error(self.MAX_JSON_DEPTH)\n",
+        reverted="            # SABOTAGE: rely on RecursionError, which 3.12 never raises\n",
+        targets=("tests/test_phase2_hardening.py",),
+    ),
+    Guard(
         name="m40_1_phase2_hardening_has_no_module_level_skip",
         milestone="M40.1",
         path="tests/test_phase2_hardening.py",

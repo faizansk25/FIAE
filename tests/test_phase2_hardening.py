@@ -21,7 +21,11 @@ from fiae.errors import FIAEError
 from fiae.experiment.tracking import ExperimentTracker, TrackingConfig
 from fiae.fitted_pipeline import FittedPipeline
 from fiae.intake.adapter_api import ApiAdapter
-from fiae.intake.adapter_file import JsonAdapter, NdjsonAdapter
+from fiae.intake.adapter_file import (
+    MAX_JSON_DEPTH,
+    JsonAdapter,
+    NdjsonAdapter,
+)
 from fiae.search.triggers import FeatureProposal
 
 
@@ -214,6 +218,39 @@ class TestJsonDepthGuard:
         p.write_text('{"a": ' + "[" * 2000 + "]" * 2000 + "}")
         with pytest.raises(ValueError, match="nesting depth"):
             list(JsonAdapter(str(p)).scan())
+
+    def test_brackets_inside_a_string_are_not_nesting(self, tmp_path):
+        """The depth scan is lexical, so it has to respect string state.
+
+        A 500-bracket *string value* is one level deep, not 500. Counting
+        the characters would reject perfectly ordinary data.
+        """
+        p = tmp_path / "brackets.json"
+        p.write_text('{"a": "' + "[" * 500 + '"}')
+        batches = list(JsonAdapter(str(p)).scan())
+        assert sum(len(b.columns["a"]) for b in batches) == 1
+
+    def test_payload_exactly_at_the_ceiling_is_accepted(self, tmp_path):
+        """The limit is a ceiling, not an off-by-one trap.
+
+        Depth MAX_JSON_DEPTH must parse; MAX_JSON_DEPTH + 1 must not.
+        Without this pair the constant could drift by one in either
+        direction and nothing would notice.
+        """
+        # The outer object counts as one level, so MAX_JSON_DEPTH - 1 arrays
+        # land exactly on the ceiling.
+        inner = "1"
+        for _ in range(MAX_JSON_DEPTH - 1):
+            inner = "[" + inner + "]"
+
+        at_limit = tmp_path / "at.json"
+        at_limit.write_text('{"a": ' + inner + "}")
+        assert sum(len(b.columns["a"]) for b in JsonAdapter(str(at_limit)).scan()) == 1
+
+        over = tmp_path / "over.json"
+        over.write_text('{"a": ' + "[" + inner + "]}")
+        with pytest.raises(ValueError, match="nesting depth"):
+            list(JsonAdapter(str(over)).scan())
 
     def test_ndjson_hostile_lines_skipped_not_fatal(self, tmp_path):
         p = tmp_path / "mix.ndjson"

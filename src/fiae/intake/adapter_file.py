@@ -15,6 +15,7 @@ from __future__ import annotations
 
 import hashlib
 import importlib
+import io
 import json
 from pathlib import Path
 from typing import Any, Iterator, Optional
@@ -204,6 +205,59 @@ class ParquetAdapter(BaseAdapter):
 
 # ── JSON / NDJSON Adapter ───────────────────────────────────────────────
 
+#: Maximum structural nesting accepted before a JSON/NDJSON payload is
+#: treated as hostile. Declared once so both adapters enforce the same
+#: ceiling and the error messages agree.
+MAX_JSON_DEPTH = 64
+
+#: Nesting counter: brackets inside strings do not count, and neither do
+#: escaped quotes. Chunked so a hostile line cannot force the whole file
+#: into memory just to measure it.
+_DEPTH_CHUNK = 65536
+
+
+def _exceeds_json_depth(fh, max_depth: int) -> bool:
+    """True once the payload nests deeper than `max_depth`.
+
+    Both adapters used to rely on catching ``RecursionError`` from
+    ``json.load``. That is an interpreter implementation detail, not a
+    contract: CPython 3.12 parses a 2000-deep array without recursing, so
+    the guard silently did nothing there and `MAX_JSON_DEPTH` was never
+    read by any code path. Counting depth explicitly works the same way on
+    every supported version, and stops the payload before the parser does.
+    """
+    depth = 0
+    in_string = False
+    escaped = False
+    while True:
+        chunk = fh.read(_DEPTH_CHUNK)
+        if not chunk:
+            return False
+        for ch in chunk:
+            if in_string:
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                continue
+            if ch == '"':
+                in_string = True
+            elif ch in "[{":
+                depth += 1
+                if depth > max_depth:
+                    return True
+            elif ch in "]}":
+                depth -= 1
+
+
+def _nesting_error(max_depth: int) -> ValueError:
+    return ValueError(
+        f"JSON exceeds maximum nesting depth ({max_depth}); refusing to parse."
+    )
+
+
 class JsonAdapter(BaseAdapter):
     """Adapter for JSON files (array of objects).
 
@@ -234,7 +288,7 @@ class JsonAdapter(BaseAdapter):
 
     # Recursion/zip-bomb guard: JSON nested deeper than this is rejected
     # rather than crashing with a raw RecursionError mid-scan.
-    MAX_JSON_DEPTH = 64
+    MAX_JSON_DEPTH = MAX_JSON_DEPTH
 
     def scan(
         self,
@@ -243,13 +297,16 @@ class JsonAdapter(BaseAdapter):
     ) -> Iterator[RowBatch]:
         """Read JSON array of objects."""
         with open(self._path, "r", encoding="utf-8") as f:
+            if _exceeds_json_depth(f, self.MAX_JSON_DEPTH):
+                raise _nesting_error(self.MAX_JSON_DEPTH)
+            f.seek(0)
             try:
                 data = json.load(f)
             except RecursionError as err:
-                raise ValueError(
-                    f"JSON file exceeds maximum nesting depth "
-                    f"({self.MAX_JSON_DEPTH}); refusing to parse."
-                ) from err
+                # Belt and braces: the depth scan above is the real guard,
+                # but a structure that slips past it must not surface as a
+                # raw RecursionError to the caller.
+                raise _nesting_error(self.MAX_JSON_DEPTH) from err
 
         if not isinstance(data, list):
             data = [data]
@@ -326,6 +383,9 @@ class NdjsonAdapter(BaseAdapter):
             for line in f:
                 line = line.strip()
                 if not line:
+                    continue
+                if _exceeds_json_depth(io.StringIO(line), MAX_JSON_DEPTH):
+                    # Hostile over-nested line: skip it, keep scanning.
                     continue
                 try:
                     obj = json.loads(line)
