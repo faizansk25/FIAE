@@ -101,6 +101,25 @@ class TestBadgeGuardIsNotVacuous:
 
         assert _collected_count(FakeSession()) == 1151
 
+    def test_the_guard_itself_raises_on_a_drifted_count(self):
+        """Drive the real guard method under normal-run conditions.
+
+        `item_count` is None here because that is what pytest reports on an
+        ordinary run - the one case the pre-fix lookup mishandled.  Under
+        those conditions a drifted collection count must raise, so restoring
+        the vacuous lookup makes this test fail instead of quietly skipping.
+        """
+
+        class FakeRequest:
+            class config:
+                item_count = None  # a normal run: --collect-only never happened
+
+            class session:
+                testscollected = 1000  # >700, and far from the real badge
+
+        with pytest.raises(AssertionError, match="badge says"):
+            TestReadmeCountClaims().test_tests_badge_matches_collected(FakeRequest())
+
     def test_drift_beyond_tolerance_is_rejected(self):
         with pytest.raises(AssertionError, match="badge says 1058"):
             _assert_badge_tracks(1058, 1151)
