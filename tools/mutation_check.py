@@ -208,6 +208,25 @@ GUARDS: tuple[Guard, ...] = (
         reverted='                    if j["state"] == "COMPLETED"]  # SABOTAGE\n',
         targets=("tests/test_m38_correctness.py", "tests/test_server.py"),
     ),
+    Guard(
+        # The only guard whose subject is a test.  Its failure mode was
+        # invisible from inside a normal run: the guard skipped its own
+        # assertion, so the suite that should have caught the drift was the
+        # suite doing the skipping.
+        name="m40_1_readme_badge_count_is_collected_not_vacuous",
+        milestone="M40.1",
+        path="tests/test_readme_integrity.py",
+        finding="The README badge guard read pytestconfig.item_count, which "
+                "is only set under --collect-only, so on every ordinary run "
+                "it skipped its own assertion and the badge silently drifted "
+                "93 tests out of date.",
+        fixed="        _assert_badge_tracks(int(m.group(1)), _collected_count(request.session))\n",
+        reverted="        _assert_badge_tracks(\n"
+                 "            int(m.group(1)),\n"
+                 "            getattr(request.config, \"item_count\", None),  # SABOTAGE: vacuous\n"
+                 "        )\n",
+        targets=("tests/test_readme_integrity.py",),
+    ),
 )
 
 

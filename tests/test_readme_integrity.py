@@ -13,8 +13,35 @@ no design-doc count claim to verify.
 import os
 import re
 
+import pytest
+
 
 _ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
+
+BADGE_TOLERANCE = 15
+
+
+def _collected_count(session) -> int | None:
+    """How many tests pytest collected in this run, or None if unknown.
+
+    Must come from ``Session.testscollected``, which pytest sets after
+    collection on *every* run.  ``config.item_count`` is populated only
+    under ``--collect-only``, so reading it here made this whole file skip
+    its own assertion on any ordinary ``pytest tests/`` run - the guard
+    passed vacuously while the badge drifted 93 tests out of date.
+    """
+    return getattr(session, "testscollected", None)
+
+
+def _assert_badge_tracks(badge: int, collected: int | None) -> None:
+    """Raise unless the README badge is within tolerance of reality."""
+    if not collected or collected <= 700:
+        # Subset run: the badge describes the full suite, so only a
+        # full-suite collection says anything about it.
+        return
+    assert abs(collected - badge) <= BADGE_TOLERANCE, (
+        f"README badge says {badge} tests, pytest collected {collected}"
+    )
 
 
 def _readme() -> str:
@@ -54,16 +81,33 @@ class TestReadmeCountClaims:
         readme = _readme()
         m = re.search(r"tests-(\d+)(?:%20|-)passing", readme)
         assert m, "tests badge missing from README"
-        badge = int(m.group(1))
-        # `config.item_count` is only populated under --collect-only, so on an
-        # ordinary `pytest tests/` run this attribute was None and the whole
-        # assertion was skipped: the guard passed vacuously while the badge
-        # drifted ~90 tests out of date.  `Session.testscollected` is set by
-        # pytest after collection on every run, so this now really fires.
-        collected = getattr(request.session, "testscollected", None)
-        if collected and collected > 700:
-            # Full-suite run: badge must track collection within tolerance
-            # for tests added/removed between README edits.
-            assert abs(collected - badge) <= 15, (
-                f"README badge says {badge} tests, pytest collected {collected}"
-            )
+        _assert_badge_tracks(int(m.group(1)), _collected_count(request.session))
+
+
+class TestBadgeGuardIsNotVacuous:
+    """The badge guard is itself a guard, so it gets the same treatment.
+
+    Its previous failure mode - reading an attribute that is None on a
+    normal run, silently skipping the assertion - is invisible to a normal
+    suite run, because the suite *is* the thing that skipped.  These tests
+    pin the mechanism itself, so the vacuous form cannot come back.
+    """
+
+    def test_count_comes_from_testscollected_not_item_count(self):
+        class FakeSession:
+            # `item_count` exists only under --collect-only; a lookup that
+            # reached for it (the pre-fix code) would return None here.
+            testscollected = 1151
+
+        assert _collected_count(FakeSession()) == 1151
+
+    def test_drift_beyond_tolerance_is_rejected(self):
+        with pytest.raises(AssertionError, match="badge says 1058"):
+            _assert_badge_tracks(1058, 1151)
+
+    def test_drift_inside_tolerance_is_allowed(self):
+        _assert_badge_tracks(1151, 1151 + BADGE_TOLERANCE)
+        _assert_badge_tracks(1151, 1151 - BADGE_TOLERANCE)
+
+    def test_subset_run_is_not_judged_against_the_full_suite_badge(self):
+        _assert_badge_tracks(1151, 4)  # this file alone: no verdict, no raise
