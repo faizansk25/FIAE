@@ -13,6 +13,7 @@ External audit findings, each verified against the code first:
 """
 
 import random
+import types
 
 import pytest
 
@@ -452,3 +453,115 @@ class TestMulticlassProbeIsActuallyOneVsRest:
         rec = FeatureAcceptanceRecord(feature_id="c", operator="c")
         v = f3_incremental_probe(rec, [], noise, y, Task.MULTICLASS)
         assert not v.passed
+
+class TestHpoSelectionActuallyObeysDirection:
+    """The gap the completion check found: ``is_better`` was unit-tested in
+    isolation, but nothing proved ``phase_hpo`` *calls* it. Restoring the
+    hard-coded ``>`` inside phase_hpo left the entire suite green.
+    """
+
+    @staticmethod
+    def _harness(monkeypatch, canonical, script):
+        """Drive phase_hpo with a scripted sequence of trial outcomes.
+
+        ``script`` is a list of ``(metric_name, value, direction)`` returned
+        in order. The training matrix is stubbed so the selection logic is
+        reached without a data file -- otherwise phase_hpo exits early on
+        "no training data" and every assertion below would pass vacuously.
+        """
+        from fiae.contracts import MetricValue
+        from fiae.orchestration import model_training as mt
+        from fiae.search.triggers import FeatureProposal
+
+        monkeypatch.setattr(
+            canonical, "_materialize_training_matrix",
+            lambda f, s, t, v: ([[1.0], [2.0], [3.0], [4.0]],
+                                [0.1, 0.2, 0.3, 0.4], "regression"),
+        )
+
+        queued = list(script)
+
+        def fake_run(self, spec, X, y, task):
+            name, value, direction = queued.pop(0)
+
+            class T:
+                status = types.SimpleNamespace(name="COMPLETED")
+                model_family = name
+                metrics = [MetricValue(name=name, value=value,
+                                       direction=direction, split="cv")]
+
+            return T()
+
+        monkeypatch.setattr(mt.TrialRunner, "run_trial", fake_run)
+
+        class F:
+            portfolio_proposals = [FeatureProposal(
+                op="identity", inputs=["raw:x"], params={})]
+            # phase_hpo caps candidates at max(portfolio_size, 2), so the
+            # funnel size is what decides how many scripted trials run.
+            portfolio_size = len(script)
+
+        class V:
+            task = "regression"
+
+        result = canonical.phase_hpo(None, F(), V(),
+                                     source_path="stub.csv", target="y")
+        assert len(result.trials) == len(script), (
+            f"only {len(result.trials)} of {len(script)} trials ran; the "
+            "selection logic below would not be reached")
+        return result
+
+    def test_lower_mse_wins_even_when_it_is_evaluated_second(self, monkeypatch):
+        from fiae.contracts import Direction
+        from fiae.pipeline import canonical
+
+        # The worse model is tried first, so a hard-coded ">" keeps it.
+        hpo = self._harness(monkeypatch, canonical, [
+            ("mse", 1.0, Direction.MINIMIZE),
+            ("mse", 0.1, Direction.MINIMIZE),
+        ])
+        assert hpo.best_score == pytest.approx(0.1), (
+            "phase_hpo kept the LARGER MSE; direction is not being obeyed")
+        assert hpo.best_metric == "mse"
+
+    def test_three_trials_keep_the_global_minimum(self, monkeypatch):
+        from fiae.contracts import Direction
+        from fiae.pipeline import canonical
+
+        hpo = self._harness(monkeypatch, canonical, [
+            ("mse", 0.5, Direction.MINIMIZE),
+            ("mse", 2.0, Direction.MINIMIZE),
+            ("mse", 0.25, Direction.MINIMIZE),
+        ])
+        assert hpo.best_score == pytest.approx(0.25)
+
+    def test_higher_score_wins_for_a_maximize_metric(self, monkeypatch):
+        from fiae.contracts import Direction
+        from fiae.pipeline import canonical
+
+        hpo = self._harness(monkeypatch, canonical, [
+            ("roc_auc", 0.91, Direction.MAXIMIZE),
+            ("roc_auc", 0.55, Direction.MAXIMIZE),
+        ])
+        assert hpo.best_score == pytest.approx(0.91)
+        assert hpo.best_metric == "roc_auc"
+
+    def test_identical_values_do_not_flip_the_selection(self, monkeypatch):
+        from fiae.contracts import Direction
+        from fiae.pipeline import canonical
+
+        hpo = self._harness(monkeypatch, canonical, [
+            ("mse", 0.25, Direction.MINIMIZE),
+            ("mse", 0.25, Direction.MINIMIZE),
+        ])
+        assert hpo.best_score == pytest.approx(0.25)
+
+    def test_a_nan_never_wins(self, monkeypatch):
+        from fiae.contracts import Direction
+        from fiae.pipeline import canonical
+
+        hpo = self._harness(monkeypatch, canonical, [
+            ("mse", 0.4, Direction.MINIMIZE),
+            ("mse", float("nan"), Direction.MINIMIZE),
+        ])
+        assert hpo.best_score == pytest.approx(0.4)
