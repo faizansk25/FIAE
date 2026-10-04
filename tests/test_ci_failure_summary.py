@@ -134,6 +134,14 @@ class TestFailureAnnotation:
         assert "tests.test_a::test_fails" in out
         assert "tests.test_b::test_errors" in out
 
+    def test_annotation_carries_what_it_actually_asserted(self, tmp_path, capsys):
+        """"exit code 1" is not a diagnosis; the message is."""
+        xml = tmp_path / "pytest-results.xml"
+        xml.write_text(_SUITE, encoding="utf-8")
+        _SUMMARY.main([str(xml)])
+        out = capsys.readouterr().out
+        assert "assert 1058 == 1151" in out
+
     def test_emits_nothing_for_a_green_report(self, tmp_path, capsys):
         xml = tmp_path / "pytest-results.xml"
         xml.write_text(

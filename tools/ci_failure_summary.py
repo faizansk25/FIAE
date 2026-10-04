@@ -70,14 +70,21 @@ def render(xml_path: str) -> str:
     return "\n".join(lines) + "\n"
 
 
-def _fail_node_ids(xml_path: str) -> list[str]:
+def _failures(xml_path: str) -> list[tuple[str, str]]:
+    """(node id, first line of the failure message) for each bad case."""
     try:
         root = ET.parse(xml_path).getroot()
     except (ET.ParseError, OSError):
         return []
-    return [
-        f"{tc.get('classname')}::{tc.get('name')}" for tc in _bad_cases(root)
-    ]
+    out = []
+    for tc in _bad_cases(root):
+        node = tc.find("failure")
+        if node is None:
+            node = tc.find("error")
+        detail = _detail(node)
+        head = detail.splitlines()[0].strip() if detail else ""
+        out.append((f"{tc.get('classname')}::{tc.get('name')}", head))
+    return out
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -91,13 +98,18 @@ def main(argv: list[str] | None = None) -> int:
     print(text)
 
     # The job summary is readable in a browser, but check-run annotations are
-    # also readable through the unauthenticated API - so a failing test name
-    # is visible to tooling, not just to whoever is looking at the run page.
-    failing = _fail_node_ids(xml_path)
-    if failing:
-        names = ", ".join(failing[:5])
-        more = f" (+{len(failing) - 5} more)" if len(failing) > 5 else ""
-        print(f"::error title=pytest::{len(failing)} failing: {names}{more}".replace("\n", " "))
+    # also readable through the unauthenticated API - so a failing test name,
+    # and what it actually asserted, are visible to tooling and not only to
+    # whoever happens to be looking at the run page.
+    failures = _failures(xml_path)
+    if failures:
+        names = ", ".join(n for n, _ in failures[:3])
+        more = f" (+{len(failures) - 3} more)" if len(failures) > 3 else ""
+        headline = failures[0][1][:200]
+        print(
+            f"::error title=pytest::{len(failures)} failing: {names}{more}"
+            f" -- {headline}".replace("\n", " ")
+        )
     return 0
 
 
