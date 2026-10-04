@@ -127,6 +127,9 @@ ignore = [
 # like imports below module docstrings, file handles held across assertions,
 # and broad pytest.raises(Exception) probes are accepted.
 "tests/**" = ["S", "B011", "E402", "SIM115", "B017", "DTZ001", "RUF012"]
+# CI reporter parses the JUnit XML that pytest wrote in the same job - no
+# external or user-supplied XML ever reaches it.
+"tools/ci_failure_summary.py" = ["S314"]
 
 [tool.ruff.format]
 quote-style = "double"

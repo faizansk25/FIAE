@@ -220,11 +220,11 @@ GUARDS: tuple[Guard, ...] = (
                 "is only set under --collect-only, so on every ordinary run "
                 "it skipped its own assertion and the badge silently drifted "
                 "93 tests out of date.",
-        fixed="        _assert_badge_tracks(int(m.group(1)), _collected_count(request.session))\n",
-        reverted="        _assert_badge_tracks(\n"
-                 "            int(m.group(1)),\n"
-                 "            getattr(request.config, \"item_count\", None),  # SABOTAGE: vacuous\n"
-                 "        )\n",
+        fixed="            _assert_badge_tracks(int(m.group(1)), _collected_count(request.session))\n",
+        reverted="            _assert_badge_tracks(\n"
+                 "                int(m.group(1)),\n"
+                 "                getattr(request.config, \"item_count\", None),  # SABOTAGE: vacuous\n"
+                 "            )\n",
         targets=("tests/test_readme_integrity.py",),
     ),
 )

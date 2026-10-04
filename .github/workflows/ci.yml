@@ -82,6 +82,13 @@ jobs:
         run: python tests/real_dataset_generator.py
       - name: Run test suite
         run: python -m pytest tests/ --junitxml=pytest-results.xml
+      - name: Explain failures in the job summary
+        # Job logs and artifacts both need authentication to read, so a red
+        # CI run on a public repo is otherwise a dead end: you see "exit
+        # code 1" and nothing else. The JUnit XML is already on disk - name
+        # the failures where they are readable.
+        if: failure()
+        run: python tools/ci_failure_summary.py pytest-results.xml
       - name: End-to-end example smoke
         run: python examples/churn/run_api.py
       - name: Upload test results
@@ -126,7 +133,10 @@ jobs:
       - name: Generate real-data fixture (100K rows, ~19MB)
         run: python tests/real_dataset_generator.py
       - name: Run suite with coverage
-        run: python -m pytest tests/ --cov=fiae --cov-report=xml --cov-report=term
+        run: python -m pytest tests/ --cov=fiae --junitxml=pytest-results.xml --cov-report=xml --cov-report=term
+      - name: Explain failures in the job summary
+        if: failure()
+        run: python tools/ci_failure_summary.py pytest-results.xml
       - name: Upload coverage artifact
         uses: actions/upload-artifact@v7
         with:
