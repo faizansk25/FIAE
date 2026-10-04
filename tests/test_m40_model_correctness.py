@@ -17,8 +17,6 @@ import types
 
 import pytest
 
-sklearn = pytest.importorskip("sklearn")
-
 from fiae.contracts import Direction, MetricValue, Task, TrialStatus
 from fiae.orchestration.model_training import (
     TrialRunner,

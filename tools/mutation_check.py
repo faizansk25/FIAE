@@ -209,6 +209,21 @@ GUARDS: tuple[Guard, ...] = (
         targets=("tests/test_m38_correctness.py", "tests/test_server.py"),
     ),
     Guard(
+        name="m40_1_phase2_hardening_has_no_module_level_skip",
+        milestone="M40.1",
+        path="tests/test_phase2_hardening.py",
+        finding="A module-level pytest.importorskip('pyarrow') deleted all 24 "
+                "tests in this file from every CI job, silently - including "
+                "the SSRF guard and artifact-hash lineage. pyarrow was in no "
+                "extra at all, so CI reported '1147 passed' while running 24 "
+                "fewer tests than the README claimed.",
+        fixed="from fiae.search.triggers import FeatureProposal\n",
+        reverted="from fiae.search.triggers import FeatureProposal\n"
+                 "\n"
+                 "pyarrow = pytest.importorskip(\"pyarrow\")  # SABOTAGE\n",
+        targets=("tests/test_collection_integrity.py",),
+    ),
+    Guard(
         # The only guard whose subject is a test.  Its failure mode was
         # invisible from inside a normal run: the guard skipped its own
         # assertion, so the suite that should have caught the drift was the

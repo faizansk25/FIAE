@@ -16,8 +16,6 @@ Mission classes covered:
 import math
 import random
 
-import pytest
-
 from fiae.contracts import FitScope, TargetPermission
 from fiae.problem.leakage import (
     CrossFitTargetEncoder,
@@ -31,8 +29,6 @@ from fiae.problem.leakage import (
     statistical_triage,
 )
 from fiae.contracts import FeatureNode
-
-pytest.importorskip("hypothesis")
 
 
 def _kind(finding):

@@ -12,14 +12,11 @@ Invariants exercised (mission spec):
 import json
 import math
 
-import pytest
 from hypothesis import given, settings, strategies as st
 
 from fiae.features.registry import all_operators, get_operator
 from fiae.fitted_pipeline import FittedPipeline
 from fiae.search.triggers import FeatureProposal
-
-hypothesis = pytest.importorskip("hypothesis")
 
 MAX_EXAMPLES = 50
 

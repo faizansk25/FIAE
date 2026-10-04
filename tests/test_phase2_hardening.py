@@ -24,8 +24,6 @@ from fiae.intake.adapter_api import ApiAdapter
 from fiae.intake.adapter_file import JsonAdapter, NdjsonAdapter
 from fiae.search.triggers import FeatureProposal
 
-pyarrow = pytest.importorskip("pyarrow")
-
 
 # ---------------------------------------------------------------------------
 # Export / runtime equivalence
@@ -132,9 +130,20 @@ class TestSchemaPreservation:
 
 
 class TestParquetFuzzing:
+    """Only the happy path needs pyarrow.
+
+    This module used to end with a module-level
+    ``pytest.importorskip("pyarrow")``. pyarrow is not in the dev or tier1
+    extras, so on CI that line deleted **all 24 tests in this file** at
+    collection time - no error, no failure, just 21 fewer tests than the
+    badge claimed, none of them reporting anything. The guard is now
+    per-test, where a missing optional dependency is visible as one honest
+    skip. `tests/test_collection_integrity.py` keeps that from recurring.
+    """
+
     def test_valid_parquet_reads(self, tmp_path):
-        import pyarrow as pa
-        import pyarrow.parquet as pq
+        pa = pytest.importorskip("pyarrow")
+        pq = pytest.importorskip("pyarrow.parquet")
 
         p = tmp_path / "ok.parquet"
         pq.write_table(pa.table({"a": [1, 2, 3], "b": ["x", "y", "z"]}), p)

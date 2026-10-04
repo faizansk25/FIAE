@@ -11,11 +11,7 @@ import os
 import sys
 
 
-import pytest
-
 from fiae.orchestration.model_training import _evaluate_cv
-
-sklearn = pytest.importorskip("sklearn")
 
 
 class TestEvaluateCvImbalanced:

@@ -59,6 +59,10 @@ gcs = ["google-cloud-storage"]
 azure = ["azure-storage-blob"]
 sql = ["sqlalchemy"]
 excel = ["openpyxl"]
+# Parquet is a first-class adapter format, but pyarrow is heavy and optional.
+# Declared so CI can install it explicitly instead of silently skipping the
+# Parquet tests (see tests/test_collection_integrity.py).
+parquet = ["pyarrow"]
 build = ["cython>=3.0", "numpy>=1.24"]
 
 [tool.setuptools.packages.find]
