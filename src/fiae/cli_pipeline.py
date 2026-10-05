@@ -165,7 +165,11 @@ def cmd_pipeline(args) -> int:
             for node_id, values in exported_out.items():
                 expected_features[node_id] = values
         except Exception as _exc:
-            print(C.warning_header() + " parity harness failed: " + str(_exc))
+            # M40.5: this was C.warning_header(), which does not exist on
+            # cli_colors. The error-reporting path therefore raised
+            # AttributeError and masked the real parity failure it was
+            # supposed to report.
+            print(C.error_header() + " parity harness failed: " + str(_exc))
 
         # Compile with verification gates
         print(C.progress_step(4, 4, "Compiling..."))

@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1194%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1204%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -816,7 +816,8 @@ python examples/churn/run_api.py
 | **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | 110+ | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
 | **Error surfacing** | `test_m40_validate_error_reporting.py` | 6 | Crashed analyses must be reported, not swallowed |
 | **sklearn interop** | `test_m40_3_sklearn_api.py` | 11 | Composes in `sklearn.pipeline.Pipeline`; stdlib-only fallback |
-| **Total** | **71 files** | **1194** | |
+| **Silent-failure guards** | `test_m40_5_writeback_and_cli_attrs.py` | 10 | Write-back really persists; CLI colour refs must exist |
+| **Total** | **72 files** | **1204** | |
 
 ---
 

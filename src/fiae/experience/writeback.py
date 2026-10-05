@@ -11,8 +11,8 @@ import math
 from dataclasses import dataclass, field
 
 from ..contracts import (
-    DatasetProfile, FeatureNode, MetricValue,
-    ResourceMeasurement,
+    DatasetProfile, Direction, FeatureNode, MetricValue,
+    ResourceMeasurement, Task, TrialStatus,
 )
 from ..ids import new_id
 from .case import CaseRecord, CaseContext, CaseAction, CaseResult, CaseCost, CaseDiagnosis
@@ -133,6 +133,29 @@ class QualityPredictor:
         return family_prior * null_factor * (0.5 + 0.5 * var_score) * (0.7 + 0.3 * cardinality_factor)
 
 
+def _as_task(value: str | Task) -> Task:
+    """Coerce a task label to the Task enum, defaulting to AUTO."""
+    if isinstance(value, Task):
+        return value
+    try:
+        return Task(str(value).strip().lower())
+    except ValueError:
+        return Task.AUTO
+
+
+def _primary_metric(metrics: list[MetricValue]) -> MetricValue | None:
+    """Pick the headline metric: maximise the first maximize-direction metric.
+
+    Metrics are labelled ``maximize``/``minimize``; the case record stores one
+    primary value plus secondary metrics. Falling back to the first metric
+    keeps a single-metric run intact.
+    """
+    for m in metrics:
+        if m.direction == Direction.MAXIMIZE:
+            return m
+    return metrics[0] if metrics else None
+
+
 def write_case(
     store: ExperienceStore,
     profile: DatasetProfile,
@@ -144,44 +167,55 @@ def write_case(
     """Write a completed feature engineering case to the experience store.
 
     Returns the case_id.
+
+    M40.5: this function previously constructed every ``Case*`` dataclass with
+    keyword arguments that do not exist on those dataclasses (``rows``,
+    ``columns``, ``meta_features``, ``operators``, ``metrics``, ``memory_bytes``
+    ...), called a non-existent ``store.write``, and omitted the two required
+    ``CaseRecord`` identity fields. Every invocation raised ``TypeError``. The
+    only test covering it swallowed the error (``except Exception: pass``), so
+    the suite stayed green while the whole write-back path was dead.
     """
     meta = extract_meta_features(profile)
 
     context = CaseContext(
-        dataset_fingerprint=profile.dataset_fingerprint,
-        rows=profile.rows_observed,
-        columns=len(profile.columns),
-        meta_features=meta,
-        task=task,
+        task=_as_task(task),
+        dataset_meta_features=dict(getattr(meta, "__dict__", {}) or {})
+        or _meta_to_dict(meta),
     )
 
     action = CaseAction(
-        features=[f.feature_id for f in features],
-        operators=[f.operator for f in features],
-        params=[f.params for f in features],
+        feature_portfolio=[f.feature_id for f in features],
+        hyperparameters={
+            f.feature_id: dict(getattr(f, "params", {}) or {}) for f in features
+        },
     )
 
-    total_time = sum(r.wall_time_s or 0.0 for r in resources)
-    total_memory = max((r.peak_rss_bytes or 0 for r in resources), default=0)
-
+    primary = _primary_metric(metrics)
     result = CaseResult(
-        metrics={m.name: m.value for m in metrics},
-        feature_count=len(features),
+        primary_metric_name=primary.name if primary else None,
+        primary_metric_value=primary.value if primary else None,
+        secondary_metrics={
+            m.name: m.value for m in metrics if m is not primary
+        },
     )
 
     cost = CaseCost(
-        wall_time_s=total_time,
-        memory_bytes=total_memory,
-        cpu_seconds=sum(r.cpu_time_s or 0.0 for r in resources),
+        wall_time_s=sum(r.wall_time_s or 0.0 for r in resources),
+        cpu_time_s=sum(r.cpu_time_s or 0.0 for r in resources),
+        peak_ram_mb=_peak_ram_mb(resources),
     )
 
     diagnosis = CaseDiagnosis(
-        success=all(m.value > 0 for m in metrics) if metrics else False,
-        failure_tags=[],
+        status=TrialStatus.COMPLETED if metrics else TrialStatus.FAILED,
+        success_tags=[primary.name] if primary else [],
+        failure_tags=[] if primary else ["no_metrics_reported"],
     )
 
     case = CaseRecord(
         case_id=new_id("case"),
+        dataset_fingerprint=profile.dataset_fingerprint,
+        schema_fingerprint=_schema_fingerprint(profile),
         context=context,
         action=action,
         result=result,
@@ -189,5 +223,41 @@ def write_case(
         diagnosis=diagnosis,
     )
 
-    store.write(case)
+    # ExperienceStore persists via write_case(), not write().
+    store.write_case(case)
     return case.case_id
+
+
+def _meta_to_dict(meta: object) -> dict:
+    """Best-effort dict view of DatasetMetaFeatures (dataclass or attrs)."""
+    if isinstance(meta, dict):
+        return dict(meta)
+    if hasattr(meta, "__dataclass_fields__"):
+        return {k: getattr(meta, k, None) for k in meta.__dataclass_fields__}
+    if hasattr(meta, "__dict__"):
+        return dict(meta.__dict__)
+    return {}
+
+
+def _peak_ram_mb(resources: list[ResourceMeasurement]) -> float | None:
+    """Peak RSS converted from bytes to MiB, or None when never measured."""
+    peak = max((r.peak_rss_bytes or 0 for r in resources), default=0)
+    if not peak:
+        return None
+    return round(peak / (1024 * 1024), 6)
+
+
+def _schema_fingerprint(profile: DatasetProfile) -> str:
+    """Stable fingerprint of the column set, used for record versioning.
+
+    CaseRecord treats a different schema as a *different* record (doc 06), so
+    this must be deterministic for a given profile rather than empty.
+    """
+    from ..ids import content_hash
+
+    return content_hash(
+        [{"name": c.name,
+          "dtype": c.physical_dtype,
+          "semantic": str(getattr(c.semantic_type, "value", c.semantic_type))}
+         for c in profile.columns],
+    )[:16]

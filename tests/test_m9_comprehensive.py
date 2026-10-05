@@ -25,7 +25,6 @@ from fiae.testing.property_tests import (
     check_finite_outputs,
 )
 from fiae.features.registry import get_operator
-import contextlib
 
 
 # ============================================================================
@@ -152,15 +151,15 @@ class TestWriteCase:
             features = [FeatureNode(feature_id="f_test", operator="sqrt", inputs=["raw:x"])]
             metrics = [MetricValue("rmse", 0.5, Direction.MINIMIZE, "cv")]
             resources = []
-            try:
-                case_id = write_case(store, profile, features, metrics, resources, "regression")
-                assert case_id.startswith("case_")
-            except Exception:
-                pass  # store API may differ
-            finally:
-                # Close store to release SQLite lock
-                with contextlib.suppress(Exception):
-                    store._conn.close()
+            # M40.5: this test used to swallow every exception
+            # ("except Exception: pass  # store API may differ"), which is why
+            # a TypeError on every write_case() call stayed invisible. It must
+            # now fail loudly if the write-back path breaks again.
+            case_id = write_case(store, profile, features, metrics, resources, "regression")
+            assert case_id.startswith("case_")
+            # Release the SQLite handle before the tempdir is removed; on
+            # Windows an open connection makes the file undeletable.
+            store.close()
 
 
 # ============================================================================
