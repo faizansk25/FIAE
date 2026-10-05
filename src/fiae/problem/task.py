@@ -159,7 +159,26 @@ def infer_task(
     if task is Task.AUTO and not ambiguities:
         ambiguities.append("unable to infer task from target semantics")
 
-    # 5) Positive class / imbalance when binary (class order resolution).
+    # 5) Supervised classification requires at least two observed classes.
+    # A classification candidate built from a one-class target is not a tractable
+    # supervised problem: it cannot form a positive class and cannot build a
+    # stratified split. Record it as an ambiguity and lower confidence so the
+    # CLI/learn path stops emitting a metric plan that the split code would
+    # later refuse to construct (W-1).
+    if task in (Task.BINARY, Task.MULTICLASS):
+        class_count: Optional[int] = None
+        if target_values:
+            classes = sorted({v for v in target_values if v is not None})
+            class_count = len(classes)
+        else:
+            class_count = target_profile.distinct_estimate
+        if class_count == 1:
+            ambiguities.append(
+                "target has 1 observed class; cannot form a supervised classification split"
+            )
+            task = Task.AUTO
+
+    # 6) Positive class / imbalance when binary (class order resolution).
     class_count: Optional[int] = None
     positive_cls: Optional[Any] = None
     positive_rate: Optional[float] = None

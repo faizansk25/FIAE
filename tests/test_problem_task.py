@@ -91,6 +91,80 @@ def test_positive_class_default_from_truthy_strings():
     assert inf.positive_class == "yes"
 
 
+def test_one_class_target_is_not_a_tractable_classification():
+    """A target with one observed class is not a tractable supervised
+    classification problem: it cannot form a positive class and cannot build
+    a stratified split. The inference must refuse to claim binary/multiclass
+    with high confidence instead of emitting a metric plan that the split
+    code would later refuse to construct (M41).
+    """
+    values = [0, 0, 0]
+    inf = infer_task(cp(1, SemanticType.COUNT, "integer"), target_values=values)
+    assert inf.task is Task.AUTO
+    assert inf.confidence < 1.0
+    assert any(
+        "1 observed class" in a for a in inf.ambiguities
+    ), inf.ambiguities
+    assert inf.positive_class is None
+    # The guard jumps to AUTO before the BINARY class_count block runs, so
+    # class_count stays None on the refused path. Assert on what actually
+    # signals refusal rather than the old BINARY plumbing.
+    assert inf.class_count is None
+
+
+def test_one_class_target_without_target_values_is_refused_on_profile():
+    """When only the profile is available, ``distinct_estimate==1`` still
+    implies a one-class target, so the same refusal applies.
+    """
+    inf = infer_task(cp(1, SemanticType.COUNT, "integer"))
+    assert inf.task is Task.AUTO
+    assert inf.confidence < 1.0
+    assert any(
+        "1 observed class" in a for a in inf.ambiguities
+    ), inf.ambiguities
+    assert inf.class_count is None
+
+
+def test_two_class_target_still_infers_binary():
+    """The guard must not over-trigger: a real two-class target still
+    infers binary with high confidence.
+    """
+    inf = infer_task(cp(2, SemanticType.COUNT, "integer"), target_values=[0, 0, 1, 1])
+    assert inf.task is Task.BINARY
+    assert inf.confidence == 1.0
+    assert inf.ambiguities == []
+    assert inf.positive_class == 1
+    assert inf.class_count == 2
+
+
+def test_regression_target_is_unaffected_by_the_one_class_guard():
+    """The guard is classification-only. A high-cardinality continuous
+    target still infers regression with high confidence.
+
+    (A ``distinct==1`` numeric profile becomes a one-class BINARY candidate
+    before the guard runs and is refused as classification, so it is the wrong
+    shape for proving regression is untouched -- use a real regression shape.)
+    """
+    inf = infer_task(cp(200, SemanticType.CONTINUOUS_NUMERIC, "float"))
+    assert inf.task is Task.REGRESSION
+    assert inf.confidence == 1.0
+    assert inf.ambiguities == []
+    assert any(t.name == "rmse" for t in route_metrics(inf.task))
+
+
+def test_one_class_continuous_profile_is_refused_as_classification():
+    """A ``distinct==1`` continuous profile is a one-class BINARY candidate
+    (distinct<=2 on a numeric type), and the guard refuses it as a tractable
+    classification -- it does not silently let it into a metric plan.
+    """
+    inf = infer_task(cp(1, SemanticType.CONTINUOUS_NUMERIC, "float"))
+    assert inf.task is Task.AUTO
+    assert inf.confidence < 1.0
+    assert any(
+        "1 observed class" in a for a in inf.ambiguities
+    ), inf.ambiguities
+
+
 def test_route_metrics_binary():
     m = route_metrics(Task.BINARY)
     names = [t.name for t in m]
