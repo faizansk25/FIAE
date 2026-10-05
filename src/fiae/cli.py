@@ -7,6 +7,7 @@ the same core engine and implements no ML logic itself (invariant 18).
 from __future__ import annotations
 
 import argparse
+import contextlib
 import dataclasses
 import json
 import sys
@@ -565,7 +566,25 @@ def _error_hints(err: "FIAEError") -> list[str]:
     return hints
 
 
+def _force_utf8_stdio() -> None:
+    """Make stdout/stderr UTF-8 so non-ASCII column names can be printed.
+
+    M40.8: Windows consoles default to cp1252, so `fiae inspect` on a CSV
+    with a header like "名前" died with UnicodeEncodeError and a raw
+    traceback -- profiling had already succeeded by then. errors="replace"
+    degrades unencodable characters instead of aborting the command.
+    """
+    for stream in (sys.stdout, sys.stderr):
+        reconfigure = getattr(stream, "reconfigure", None)
+        if reconfigure is None:
+            continue
+        # A stream already detached or replaced is simply left alone.
+        with contextlib.suppress(ValueError, OSError):
+            reconfigure(encoding="utf-8", errors="replace")
+
+
 def main(argv: Optional[list[str]] = None) -> int:
+    _force_utf8_stdio()
     _enable_windows_ansi()
     try:
         import colorama

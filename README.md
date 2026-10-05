@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1223%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1230%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -835,7 +835,8 @@ python examples/churn/run_api.py
 | **Silent-failure guards** | `test_m40_5_writeback_and_cli_attrs.py` | 10 | Write-back really persists; CLI colour refs must exist |
 | **Row-count accuracy** | `test_m40_6_row_estimate_accuracy.py` | 8 | Estimates unbiased by file position |
 | **Semantics & display** | `test_m40_7_semantic_and_display.py` | 11 | Count vs measurement, ANSI-aware column alignment |
-| **Total** | **74 files** | **1223** | |
+| **Unicode output** | `test_m40_8_unicode_output.py` | 7 | Non-ASCII column names must not crash the CLI |
+| **Total** | **75 files** | **1230** | |
 
 ---
 
