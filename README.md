@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1183%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1194%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -226,6 +226,35 @@ fiae learn data.csv --target is_returned
 ---
 
 ## Installation
+
+### scikit-learn users
+
+`SklearnFeatureTransformer` is a drop-in transformer, so FIAE features
+compose with the estimators, CV and grid-search you already use:
+
+```python
+from sklearn.pipeline import Pipeline
+from sklearn.ensemble import RandomForestClassifier
+from sklearn.model_selection import cross_val_score
+from fiae import SklearnFeatureTransformer, FeatureProposal
+
+proposals = [
+    FeatureProposal(op="sqrt",     inputs=["raw:spend"], params={}),
+    FeatureProposal(op="log1p",    inputs=["raw:spend"], params={}),
+    FeatureProposal(op="standardize", inputs=["raw:age"], params={}),
+]
+
+pipe = Pipeline([
+    ("fiae", SklearnFeatureTransformer(proposals)),
+    ("rf", RandomForestClassifier(random_state=0)),
+])
+pipe.fit(X_train, y_train)                     # fit/transform, clone(), GridSearchCV
+cross_val_score(pipe, X_train, y_train, cv=5, scoring="roc_auc")
+```
+
+scikit-learn is **optional**. Core FIAE imports require only the standard
+library (NFR-002); the transformer detects sklearn when present and falls back
+to a stdlib `get_params`/`set_params` when it is not.
 
 ### From source
 
@@ -786,7 +815,8 @@ python examples/churn/run_api.py
 | **Misc** | `test_m*.py` | 200+ | Milestone integration tests (M3–M13) |
 | **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | 110+ | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
 | **Error surfacing** | `test_m40_validate_error_reporting.py` | 6 | Crashed analyses must be reported, not swallowed |
-| **Total** | **70 files** | **1183** | |
+| **sklearn interop** | `test_m40_3_sklearn_api.py` | 11 | Composes in `sklearn.pipeline.Pipeline`; stdlib-only fallback |
+| **Total** | **71 files** | **1194** | |
 
 ---
 

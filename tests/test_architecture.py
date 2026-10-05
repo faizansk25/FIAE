@@ -20,7 +20,7 @@ LAYERS = {
         "features", "intake", "problem", "search", "experience", "codegen",
         "funnel", "probe", "evaluate", "orchestration", "model_registry",
         "fitted_pipeline", "tuning", "runs", "experiment", "security",
-        "testing", "research",
+        "testing", "research", "sklearn_api",
     },
     2: {"pipeline", "learn"},
     3: {

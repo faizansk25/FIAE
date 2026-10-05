@@ -7,7 +7,7 @@ name = "fiae"
 version = "0.1.0"
 description = "FIAE - Feature Intelligence & Architecture Engine"
 readme = "README.md"
-license = {file = "LICENSE"}
+license-files = ["LICENSE"]
 authors = [{name = "Faizan SK", email = "faizansk25@users.noreply.github.com"}]
 requires-python = ">=3.10"
 keywords = [
@@ -26,12 +26,15 @@ classifiers = [
   "Development Status :: 4 - Beta",
   "Intended Audience :: Developers",
   "Intended Audience :: Science/Research",
+  "Intended Audience :: Science/Engineering",
+  "Topic :: Scientific/Engineering",
   "Topic :: Scientific/Engineering :: Artificial Intelligence",
   "Topic :: Software Development :: Libraries :: Python Modules",
   "Programming Language :: Python :: 3",
   "Programming Language :: Python :: 3.10",
   "Programming Language :: Python :: 3.11",
   "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
   "Operating System :: OS Independent",
 ]
 # NFR-002: core import requires standard library only.
