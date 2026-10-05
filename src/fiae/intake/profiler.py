@@ -417,9 +417,17 @@ def profile_source(
             f["finding_id"] = f"{f['type']}|{p.name}"
             all_findings.append(f)
         if p.warnings:
-            all_findings.append(
-                {"type": "duplicate_columns", "column": p.name, "severity": "warning"}
-            )
+            matched = p.warnings[0]
+            if matched.startswith("duplicate_of:"):
+                all_findings.append(
+                    {
+                        "type": "duplicate_columns",
+                        "column": p.name,
+                        "matched_column": matched.split(":", 1)[1],
+                        "match_basis": "sampled_value_multiset",
+                        "severity": "warning",
+                    }
+                )
 
     schema_fingerprint = "schema_" + content_hash(
         [(p.name, p.physical_dtype, p.semantic_type.value) for p in column_profiles]

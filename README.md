@@ -101,7 +101,7 @@ Run it yourself in under a minute: `python examples/churn/run_api.py` (no creden
 | **Deterministic content-hash IDs** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **Core: zero third-party deps** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 | **95 typed operators** | ✅ | ~50 | ~30 | ~20 | — | — |
-| **12 data adapters covering 25+ sources** (13 file extensions + 16 URI schemes: files, URLs, cloud, SQL, warehouses, APIs) | ✅ | ⚠️ | ❌ | ⚠️ | ❌ | ❌ |
+| **Data adapters** | 13 auto-detected adapters, 21 sources (13 file extensions + 16 URI schemes: files, URLs, cloud, SQL, warehouses, APIs) | ✅ | ⚠️ | ❌ | ⚠️ | ❌ | ❌ |
 | **Progress indicators with ETA** | ✅ | ❌ | ❌ | ❌ | ❌ | ❌ |
 
 **FIAE does not try to be the fastest or the most feature-rich. It is the safest and most principled.**
@@ -457,7 +457,7 @@ fiae codegen             # Code generation & operator tests
 
 ### `fiae connect` — Universal Source Connector
 
-One command for all 25+ supported sources (12 auto-detected adapters): auto-detects the adapter, verifies
+One command for all supported sources (21 sources across 16 adapters): auto-detects the adapter, verifies
 the connection, and profiles a sample — so you know a source works before
 running a pipeline on it.
 
@@ -818,24 +818,24 @@ python examples/churn/run_api.py
 
 | Category | Files | Count | Coverage |
 |---|---|---|---|
-| **Intake** | `test_intake_*.py` | ~50 | Profiling, CSV, JSON, Parquet |
-| **Features** | `test_features.py`, `test_operators.py` | ~100 | All 95 operators, contracts |
-| **Funnel** | `test_funnel.py`, `test_gates.py` | ~40 | F0–F6 gates, policies |
-| **Models** | `test_models.py`, `test_hpo.py` | ~60 | All 12 families, HPO algorithms |
-| **Pipeline** | `test_learn.py`, `test_m*.py` | ~80 | End-to-end pipeline, fitted pipeline, all milestones |
+| **Intake** | `test_intake_*.py` | ~40 | Profiling, CSV, JSON, Parquet |
+| **Features** | `test_features.py`, `test_ops_*.py` | ~190 | All 95 operators, contracts |
+| **Funnel** | `test_funnel.py` | ~20 | F0–F6 gates, policies |
+| **Models** | `test_tuning.py` | ~10 | Model tuning, HPO algorithms |
+| **Pipeline** | `test_learn.py`, `test_m*.py`, `test_runs.py` | ~120 | End-to-end pipeline, fitted pipeline, all milestones |
 | **Real Data** | `test_real_data_full_pipeline.py` | 17 | 20-type dataset, 100K rows, full pipeline |
-| **Contracts & Events** | `test_contracts.py`, `test_events.py` | ~30 | Typed contracts, event bus, deterministic IDs |
-| **CLI** | `test_cli.py` | ~20 | All CLI commands, JSON output |
-| **Security** | `test_security*.py` | 15 | Resource limits, input validation, audit logging |
+| **Contracts & Events** | `test_contracts.py`, `test_events.py` | ~10 | Typed contracts, event bus, deterministic IDs |
+| **CLI** | `test_cli.py`, `test_cli_error_hints.py` | ~15 | All CLI commands, JSON output |
+| **Security** | `test_security*.py` | ~15 | Resource limits, input validation, audit logging |
 | **Misc** | `test_m*.py` | 200+ | Milestone integration tests (M3–M13) |
-| **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | 110+ | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
+| **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | ~100 | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
 | **Error surfacing** | `test_m40_validate_error_reporting.py` | 6 | Crashed analyses must be reported, not swallowed |
 | **sklearn interop** | `test_m40_3_sklearn_api.py` | 11 | Composes in `sklearn.pipeline.Pipeline`; stdlib-only fallback |
 | **Silent-failure guards** | `test_m40_5_writeback_and_cli_attrs.py` | 10 | Write-back really persists; CLI colour refs must exist |
 | **Row-count accuracy** | `test_m40_6_row_estimate_accuracy.py` | 8 | Estimates unbiased by file position |
 | **Semantics & display** | `test_m40_7_semantic_and_display.py` | 11 | Count vs measurement, ANSI-aware column alignment |
 | **Unicode output** | `test_m40_8_unicode_output.py` | 7 | Non-ASCII column names must not crash the CLI |
-| **Total** | **75 files** | **1230** | |
+| **Total** | **75 test files** | **1230** | |
 
 ---
 
@@ -884,7 +884,7 @@ fiae/
 │   ├── security/               # Security
 │   └── testing/                # Testing
 ├── tools/                      # Dev tooling (mutation-check harness)
-├── tests/                      # Test suite (1177 tests)
+├── tests/                      # Test suite (1230 tests)
 ├── pyproject.toml              # Build config & dependencies
 ├── conftest.py                 # Test infrastructure
 ├── README.md                   # This file
@@ -917,7 +917,7 @@ fiae/
 - [x] Bounded-concurrency REST server: worker pool, 429 backpressure,
       per-client rate limiting, load-tested with 200 simultaneous clients
 - [x] `fiae connect` universal source connector
-- [x] 1177 passing tests, incl. property-based & adversarial suites
+- [x] 1230 passing tests, incl. property-based & adversarial suites
 - [x] Real-data validation on 20-type 100K-row dataset
 
 ### Planned

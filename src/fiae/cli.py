@@ -105,7 +105,11 @@ def cmd_inspect(args: argparse.Namespace) -> int:
             print()
             for f in p.quality_findings:
                 badge = C.badge_warn() if f["severity"] == "warning" else C.badge_info()
-                print(f"  {badge} {C.yellow(f['type'])}: {C.cyan(f['column'])}")
+                col = C.cyan(f['column'])
+                extra = ""
+                if f.get("matched_column"):
+                    extra = f" {C.gray('duplicate_of ' + f['matched_column'])}"
+                print(f"  {badge} {C.yellow(f['type'])}: {col}{extra}")
         print()
         print(C.footer())
     return 0
@@ -202,7 +206,11 @@ def cmd_analyze(args: argparse.Namespace) -> int:
         print(C.key_value("quality findings", str(len(profile.quality_findings))))
         for f in profile.quality_findings:
             badge = C.badge_warn() if f["severity"] == "warning" else C.badge_info()
-            print(f"    {badge} {f['type']}: {f['column']}")
+            col = f['column']
+            extra = ""
+            if f.get("matched_column"):
+                extra = f" (duplicate_of {f['matched_column']})"
+            print(f"    {badge} {f['type']}: {col}{extra}")
         print()
         print(C.footer())
     return 0

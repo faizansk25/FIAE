@@ -113,7 +113,9 @@ _PCT_HINTS = ("pct", "percent", "ratio", "rate", "share")
 _COUNT_HINTS = ("count", "cnt", "num_", "n_", "qty", "quantity", "visits",
                 "sessions", "clicks", "views", "orders", "items", "events",
                 "frequency", "freq", "tally", "total", "points", "score_count",
-                "purchases", "transactions", "tickets", "downloads")
+                "purchases", "transactions", "tickets", "downloads",
+                "calls", "call_count", "support_calls", "complaints",
+                "errors", "failures", "refunds", "disputes")
 # Above this distinct ratio an integer column behaves like a measured
 # magnitude rather than a tally: a real count repeats low values often.
 _COUNT_MAX_DISTINCT_RATIO = 0.5

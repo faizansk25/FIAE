@@ -235,6 +235,19 @@ def cmd_connect(args) -> int:
         print(C.key_value("fingerprint", C.gray(profile.dataset_fingerprint[:24] + "...")))
         if profile.quality_findings:
             print(C.key_value("quality findings", C.yellow(str(len(profile.quality_findings)))))
+            print()
+            print(C.section("Findings"))
+            print()
+            for f in profile.quality_findings:
+                severity = f.get('severity', 'info')
+                badge = C.badge_warn() if severity == "warning" else C.badge_info()
+                col = f.get('column', '?')
+                extra = ""
+                if f.get('matched_column'):
+                    extra = f" — duplicate_of {f['matched_column']}"
+                elif f.get('detail'):
+                    extra = f" — {f['detail']}"
+                print(f"  {badge} {C.yellow(f.get('type', '?'))}: {col}{extra}")
         print()
         sem_types = sorted({c.semantic_type.value for c in profile.columns})
         print(C.key_value("semantic types", ", ".join(C.cyan(t) for t in sem_types)))
