@@ -210,8 +210,11 @@ def phase_validate(ctx: RunContext, intake: IntakeResult, target: str) -> Valida
             # No profile evidence -> conservative default (doc 03).
             result.task = "classification"
             result.task_confidence = min(result.task_confidence, 0.5)
-    except Exception:
-        pass
+    except Exception as e:
+        # M40.2: a silent swallow here let a failed task inference surface
+        # as a clean default ("classification") indistinguishable from a
+        # real one. Record it so the run reports PARTIAL instead.
+        result.errors.append(f"task inference failed: {e}")
 
     try:
         # Basic leakage check
@@ -224,8 +227,8 @@ def phase_validate(ctx: RunContext, intake: IntakeResult, target: str) -> Valida
                     "type": "potential_identifier",
                     "severity": "review_required",
                 })
-    except Exception:
-        pass
+    except Exception as e:
+        result.errors.append(f"identifier leakage scan failed: {e}")
 
     # Stage A/B detectors (doc 03): run the real deterministic and
     # statistical leakage detectors over sampled source values so the
@@ -280,8 +283,13 @@ def phase_validate(ctx: RunContext, intake: IntakeResult, target: str) -> Valida
                                 "action": stat.action,
                                 "evidence": stat.evidence,
                             })
-    except Exception:
-        pass
+    except Exception as e:
+        # The important one: the Stage A/B detectors are the only thing
+        # standing between a leaky dataset and a clean report. Swallowing
+        # here made "leakage analysis crashed" indistinguishable from
+        # "no leakage found" -- an empty leakage_flags list with a
+        # SUCCESS/PARTIAL run status.
+        result.errors.append(f"leakage detectors failed: {e}")
 
     return result
 

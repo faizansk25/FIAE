@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1177%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1183%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -785,7 +785,8 @@ python examples/churn/run_api.py
 | **Security** | `test_security*.py` | 15 | Resource limits, input validation, audit logging |
 | **Misc** | `test_m*.py` | 200+ | Milestone integration tests (M3–M13) |
 | **Audit & Hardening** | `test_claims.py`, `test_architecture.py`, `test_api_stability.py`, `test_property_invariants.py`, `test_leakage_scenarios.py`, `test_experience_isolation.py`, `test_reliability_fuzz.py` | 110+ | Claims-as-assertions, layering, Hypothesis properties, leakage scenarios, store isolation, fuzzing |
-| **Total** | **69 files** | **1177** | |
+| **Error surfacing** | `test_m40_validate_error_reporting.py` | 6 | Crashed analyses must be reported, not swallowed |
+| **Total** | **70 files** | **1183** | |
 
 ---
 
