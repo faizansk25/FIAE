@@ -35,9 +35,15 @@ def test_profile_end_to_end(tmp_path):
     by_name = {c.name: c for c in profile.columns}
     assert set(by_name) == {"id", "age", "city", "joined", "points"}
     assert by_name["id"].semantic_type is SemanticType.IDENTIFIER
-    assert by_name["age"].semantic_type is SemanticType.COUNT
+    # M40.7: `age` was previously asserted COUNT, which encoded the very bug
+    # being fixed -- every non-negative integer was labelled a count. A 20-59
+    # age column fills its range (mean/max ~0.67), so it is a measurement,
+    # not a tally, and must classify as CONTINUOUS_NUMERIC.
+    assert by_name["age"].semantic_type is SemanticType.CONTINUOUS_NUMERIC
     assert by_name["city"].semantic_type is SemanticType.LOW_CARDINALITY_CATEGORICAL
     assert by_name["joined"].semantic_type is SemanticType.DATETIME
+    # `points` stays COUNT on name evidence: explicit count-like naming
+    # overrides the distribution-shape test.
     assert by_name["points"].semantic_type is SemanticType.COUNT
     assert profile.rows_observed == 200
     assert profile.dataset_fingerprint.startswith("ds_")

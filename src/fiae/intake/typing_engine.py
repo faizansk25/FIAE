@@ -105,6 +105,27 @@ _DT_CHAIN = frozenset({"date", "timestamp"})
 _ID_NAME_HINTS = ("_id", "id", "uuid", "guid", "key", "record")
 _CURRENCY_HINTS = ("price", "cost", "amount", "revenue", "salary", "fee", "payment")
 _PCT_HINTS = ("pct", "percent", "ratio", "rate", "share")
+# M40.7: a count needs positive evidence. Previously *every* non-negative
+# integer became COUNT, so `age` (18-70), `tenure_months` (1-72) and a binary
+# `is_returned` flag were all reported as "count" -- a measurement wearing a
+# count's label. These hints mark the columns where COUNT is the default
+# reading.
+_COUNT_HINTS = ("count", "cnt", "num_", "n_", "qty", "quantity", "visits",
+                "sessions", "clicks", "views", "orders", "items", "events",
+                "frequency", "freq", "tally", "total", "points", "score_count",
+                "purchases", "transactions", "tickets", "downloads")
+# Above this distinct ratio an integer column behaves like a measured
+# magnitude rather than a tally: a real count repeats low values often.
+_COUNT_MAX_DISTINCT_RATIO = 0.5
+# A count is right-skewed -- most observations are small and a rare few are
+# large -- so its mean sits far below its maximum. A measurement (age, tenure,
+# score) fills its range and so has a much higher mean/max ratio. Measured on
+# a 1.5k-row fixture: age 0.62, tenure 0.51, a genuine item count 0.10.
+_COUNT_MAX_MEAN_OVER_MAX = 0.3
+# Below this many numeric observations the distribution carries no usable
+# signal, so a non-negative integer is not demoted on shape alone -- absence
+# of evidence must not silently reclassify a column.
+_COUNT_MIN_SAMPLES_FOR_SHAPE = 10
 
 
 def infer_semantic_type(
@@ -143,7 +164,37 @@ def infer_semantic_type(
                 evidence["hint"] = "currency_name"
                 return SemanticType.CURRENCY, evidence
             if non_neg and physical_dtype == "integer":
-                return SemanticType.COUNT, evidence
+                # A two-valued {0,1} integer is a flag, not a tally.
+                if distinct == 2 and numeric.minimum == 0 and numeric.maximum == 1:
+                    evidence["hint"] = "binary_flag"
+                    return SemanticType.BOOLEAN, evidence
+                named_count = any(h in lname for h in _COUNT_HINTS)
+                if named_count:
+                    evidence["hint"] = "count_name"
+                    return SemanticType.COUNT, evidence
+                n_seen = getattr(numeric, "n_numeric", 0)
+                if n_seen < _COUNT_MIN_SAMPLES_FOR_SHAPE:
+                    # Too little data to judge shape; keep the prior.
+                    evidence["hint"] = "non_negative_integer_small_sample"
+                    return SemanticType.COUNT, evidence
+                if distinct_ratio <= _COUNT_MAX_DISTINCT_RATIO:
+                    # Low-cardinality integers are usually flags/enums rather
+                    # than tallies unless their shape says otherwise.
+                    mean = getattr(numeric.welford, "mean", None)
+                    mx = numeric.maximum
+                    skewed = (
+                        mean is not None and mx is not None and mx > 0
+                        and (mean / mx) <= _COUNT_MAX_MEAN_OVER_MAX
+                    )
+                    if skewed:
+                        evidence["hint"] = "non_negative_integer_skewed"
+                        return SemanticType.COUNT, evidence
+                    evidence["hint"] = "integer_not_count"
+                    return SemanticType.CONTINUOUS_NUMERIC, evidence
+                # High-cardinality non-negative integer with no count
+                # evidence: a measured magnitude (age, duration, score).
+                evidence["hint"] = "integer_not_count"
+                return SemanticType.CONTINUOUS_NUMERIC, evidence
         return SemanticType.CONTINUOUS_NUMERIC, evidence
 
     # string-valued columns -------------------------------------------------

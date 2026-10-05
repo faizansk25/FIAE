@@ -257,11 +257,19 @@ def cmd_learn(args: argparse.Namespace) -> int:
             print()
             print(C.section("Selected Features"))
             print()
+            # M40.7: pad to the widest operator actually present, and pad
+            # *before* colourising. Formatting the coloured string counted the
+            # ANSI escapes as visible width (~9 chars), so every row was
+            # mis-padded, and the old hardcoded width of 30 let longer names
+            # such as safe_ratio(tenure_months_monthly_spend) collide with
+            # the gain column.
+            name_width = max((len(m.operator) for m in r.portfolio), default=0)
             for i, m in enumerate(r.portfolio, 1):
                 status = C.badge_pass() if m.f4_passed and m.f6_passed else C.badge_fail()
                 gain_str = C.green(f"{m.incremental_gain:.6f}") if m.incremental_gain and m.incremental_gain > 0 else C.red(f"{m.incremental_gain:.6f}")
                 stab = f"{m.fold_stability:.4f}" if m.fold_stability is not None else "N/A"
-                print(f"  {C.purple(f'{i:>2}.')} {C.bold(m.operator):<30} gain={gain_str}  stability={C.cyan(stab)}  {status}")
+                label = C.bold(m.operator.ljust(name_width))
+                print(f"  {C.purple(f'{i:>2}.')} {label}  gain={gain_str}  stability={C.cyan(stab)}  {status}")
         print()
         print(C.divider())
         print(f"  {C.purple('Total time:')} {C.cyan(f'{r.total_time_s:.2f}s')}")
