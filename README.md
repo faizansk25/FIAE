@@ -48,7 +48,6 @@
 - [Contributing](#contributing)
 - [Citation](#citation)
    - [License](#license)
-   - [Support FIAE](#support-fiae)
 
 > **New here?** Skim [Why FIAE](#why-fiae), then run the 60-second end-to-end
 > example — no credentials, no GPU: [`examples/churn/run_api.py`](examples/churn/run_api.py).
@@ -973,15 +972,6 @@ If you use FIAE in your research, please cite:
 FIAE uses a **source-available** license. The source code is available for viewing,
 studying, and personal use, but redistribution and derivative works are restricted.
 See [LICENSE](LICENSE) for details.
-
-## Support FIAE
-
-FIAE is free to use. If it helps you, please consider supporting its development:
-
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-EA4AAA.svg?style=for-the-badge&logo=githubsponsors)](https://github.com/sponsors/faizansk25)
-[![Ko-fi](https://img.shields.io/badge/Donate-Ko--fi-FF5E5B.svg?style=for-the-badge&logo=ko-fi)](https://ko-fi.com/faizansk25)
-
-See [DONATIONS.md](DONATIONS.md) for details on sponsorship tiers and how funds are used.
 
 ---
 
