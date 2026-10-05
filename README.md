@@ -978,8 +978,8 @@ See [LICENSE](LICENSE) for details.
 
 FIAE is free to use. If it helps you, please consider supporting its development:
 
-[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-EA4AAA.svg?style=for-the-badge&logo=githubsponsors)](https://github.com/sponsors/fiae)
-[![Ko-fi](https://img.shields.io/badge/Donate-Ko--fi-FF5E5B.svg?style=for-the-badge&logo=ko-fi)](https://ko-fi.com/fiae)
+[![GitHub Sponsors](https://img.shields.io/badge/Sponsor-GitHub%20Sponsors-EA4AAA.svg?style=for-the-badge&logo=githubsponsors)](https://github.com/sponsors/faizansk25)
+[![Ko-fi](https://img.shields.io/badge/Donate-Ko--fi-FF5E5B.svg?style=for-the-badge&logo=ko-fi)](https://ko-fi.com/faizansk25)
 
 See [DONATIONS.md](DONATIONS.md) for details on sponsorship tiers and how funds are used.
 
