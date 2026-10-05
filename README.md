@@ -11,7 +11,7 @@
 [![CI](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml/badge.svg)](https://github.com/faizansk25/FIAE/actions/workflows/ci.yml)
 [![Python 3.10+](https://img.shields.io/badge/python-3.10+-blue.svg)](https://www.python.org/downloads/)
 [![License: Source-Available](https://img.shields.io/badge/license-source--available-orange.svg)](LICENSE)
-[![Tests](https://img.shields.io/badge/tests-1204%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/tests-1212%20passing-brightgreen.svg)](#testing)
 [![Operators](https://img.shields.io/badge/operators-95-purple.svg)](#operator-catalog)
 [![security](https://img.shields.io/badge/scanned%20by-gitleaks-informational.svg)](.github/workflows/ci.yml)
 [![PRs Welcome](https://img.shields.io/badge/PRs-welcome-brightgreen.svg)](CONTRIBUTING.md)
@@ -153,10 +153,23 @@ Export to standalone sklearn projects with 11 automated verification gates — i
 
 ## Quick Start
 
-```bash
-# Install
-pip install -e ".[dev,tier1]"
+**From a checkout** (the `fiae` command is installed by the editable install):
 
+```bash
+git clone https://github.com/faizansk25/FIAE.git
+cd FIAE
+
+# Core only -- zero third-party runtime dependencies
+pip install -e .
+
+# Or with the ML extras used below (numpy, scikit-learn, pandas, polars, joblib)
+pip install -e ".[dev,tier1]"
+```
+
+If `fiae` is not found afterwards, the console script lives in your Python
+environment's `Scripts/` directory -- see [Installation](#installation).
+
+```bash
 # Profile a dataset
 fiae inspect data.csv
 
@@ -173,16 +186,19 @@ fiae learn data.csv --target is_returned
 fiae learn data.csv --target is_returned --json
 ```
 
-**Example output:**
+**Example output** (`fiae inspect data.csv` on a 1,200-row CSV):
 
 ```
-source:      csv|/data/ecommerce.csv
-target:      is_returned (binary_classification, confidence=1.0)
-rows:        5,322 observed
-columns:     20
-metrics:     roc_auc, log_loss, brier
-proposals:   1,805 generated, 200 unique
-funnel:      200 passed F2
+source:     csv|.../customers.csv
+coverage:   rows in source: ~1,200 estimated | rows profiled: 1,200 | coverage: 100.0%
+columns:    5
+```
+
+Reading the coverage line: `rows profiled` is the number of rows actually
+scanned; `rows in source` is derived from file size and is marked `~` because
+it is an **estimate**, not a count. On large files they diverge, and
+`coverage` is the ratio between them -- so a low coverage means only part of
+the file was profiled. Add `--json` to consume any of this programmatically.
 portfolio:   8 features selected
   log1p(price): fold_stability=0.8721 [STABLE]
   sqrt(weight): fold_stability=0.8403 [STABLE]
@@ -817,7 +833,8 @@ python examples/churn/run_api.py
 | **Error surfacing** | `test_m40_validate_error_reporting.py` | 6 | Crashed analyses must be reported, not swallowed |
 | **sklearn interop** | `test_m40_3_sklearn_api.py` | 11 | Composes in `sklearn.pipeline.Pipeline`; stdlib-only fallback |
 | **Silent-failure guards** | `test_m40_5_writeback_and_cli_attrs.py` | 10 | Write-back really persists; CLI colour refs must exist |
-| **Total** | **72 files** | **1204** | |
+| **Row-count accuracy** | `test_m40_6_row_estimate_accuracy.py` | 8 | Estimates unbiased by file position |
+| **Total** | **73 files** | **1212** | |
 
 ---
 

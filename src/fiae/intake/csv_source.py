@@ -22,6 +22,12 @@ from .base import RowBatch, SamplePlan
 CANDIDATE_DELIMITERS: tuple[str, ...] = (",", "\t", ";", "|")
 PROBE_BYTES = 65_536
 DEFAULT_BATCH_ROWS = 2048
+# M40.6: the row estimate needs probes spread across the whole file, not just
+# the head. Head-only probing biases the average line length whenever line
+# length trends (monotonic ids, timestamps, appended records), and that bias
+# flows straight into rows_total and therefore into the reported coverage.
+ESTIMATE_PROBE_CHUNKS = 5
+ESTIMATE_PROBE_BYTES = 65_536
 
 
 def detect_encoding(raw: bytes) -> str:
@@ -190,17 +196,55 @@ class CsvDataSourceAdapter:
     def schema_hint(self) -> Optional[dict[str, Any]]:
         return None  # CSV is not self-describing (doc 08)
 
+    def _spread_probe(self) -> tuple[int, int]:
+        """Total (bytes, newlines) over probes spread across the whole file.
+
+        The head probe is kept as the first sample (it is also where the
+        header lives). Additional equal-sized chunks are read at evenly
+        spaced offsets, so a file whose line length drifts is averaged over
+        its full extent rather than only its first64KiB.
+        """
+        if self._size <= ESTIMATE_PROBE_BYTES:
+            return self._probe_bytes, self._probe_lines
+
+        total_bytes = self._probe_bytes
+        total_lines = self._probe_lines
+        span = max(self._size - ESTIMATE_PROBE_BYTES, 1)
+        for i in range(1, ESTIMATE_PROBE_CHUNKS):
+            offset = (span * i) // (ESTIMATE_PROBE_CHUNKS - 1)
+            try:
+                with open(self.path, "rb") as fh:
+                    fh.seek(offset)
+                    chunk = fh.read(ESTIMATE_PROBE_BYTES)
+            except OSError:
+                continue
+            if not chunk:
+                continue
+            total_bytes += len(chunk)
+            total_lines += chunk.decode(self.encoding, errors="replace").count("\n")
+        return total_bytes, total_lines
+
     def estimate_rows(self) -> Optional[int]:
-        """Estimate from average line length over the bounded probe.
+        """Estimate from average line length over bounded probes.
 
         M39.2: the header line is counted in the probe but is not a data
         row, so it is subtracted -- otherwise every CSV over-reports by
         exactly one row (200 data rows -> "201 estimated").
+
+        M40.6: probes are spread across the file. Head-only probing made the
+        estimate systematically wrong on any file whose line length trends:
+        a 300k-row CSV with an incrementing id column estimated 330,626 rows
+        (+10.2%), and the error propagated into the reported coverage.
         """
-        if self._probe_lines == 0:
+        total_bytes, total_lines = self._spread_probe()
+        if total_lines == 0:
             return None
-        avg_line = self._probe_bytes / self._probe_lines
-        estimate = int(self._size / avg_line)
+        avg_line = total_bytes / total_lines
+        # round(), not int(): the quotient is size/(size/lines), which is
+        # mathematically the line count but lands just under it in binary
+        # floating point, so truncating reported one row too few on exact
+        # small files (500 data rows -> 499).
+        estimate = round(self._size / avg_line)
         if getattr(self, "has_header", None):
             estimate -= 1
         return max(estimate, 0)
