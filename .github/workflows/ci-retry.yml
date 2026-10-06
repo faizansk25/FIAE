@@ -1,0 +1,74 @@
+name: CI retry
+
+# Hosted-runner capacity blips are the one CI failure this repo cannot
+# handle from inside a job: the job never starts ("The job was not acquired
+# by Runner of type hosted even after multiple attempts"), so no in-job
+# retry can exist — GitHub fails the run after ~15 minutes of queueing and
+# emails a failure that has nothing to do with the code. This scheduled
+# healer inspects recent failed runs, and re-runs the failed jobs only when
+# a failed job carries that exact runner-acquisition annotation. Runs with
+# genuine test failures carry different annotations and are left alone, so
+# a real red build stays red. Bounded to two automatic retries per run:
+# after that it stays red for a human.
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+  actions: write # re-run failed jobs
+  checks: read # read job annotations
+
+concurrency:
+  group: ci-retry
+  cancel-in-progress: false
+
+jobs:
+  heal:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Re-run failed jobs when the failure is runner acquisition
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          cutoff=$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)
+          # First-attempt runs only, at most two retries: run_attempt becomes
+          # 2 after our first re-run, 3 after the second, then we stop.
+          run_ids=$(gh api "repos/$GH_REPO/actions/runs?per_page=50" \
+            --jq ".workflow_runs[] | select(.conclusion == \"failure\" and .run_attempt <= 2 and .created_at >= \"$cutoff\") | .id")
+          if [ -z "$run_ids" ]; then
+            echo "No failed runs in the last 2 hours — nothing to heal."
+            exit 0
+          fi
+          while IFS= read -r run_id; do
+            [ -z "$run_id" ] && continue
+            job_ids=$(gh api "repos/$GH_REPO/actions/runs/$run_id/jobs?per_page=50" \
+              --jq '.jobs[] | select(.conclusion != null and .conclusion != "success") | .id')
+            found=0
+            if [ -n "$job_ids" ]; then
+              while IFS= read -r job_id; do
+                [ -z "$job_id" ] && continue
+                # Annotations can be absent (no findings); tolerate that,
+                # but let genuine API errors surface below at the rerun step.
+                annotations=$(gh api "repos/$GH_REPO/check-runs/$job_id/annotations" \
+                  --jq '.[].message' 2>/dev/null || true)
+                if [[ "$annotations" == *"not acquired by Runner"* ]]; then
+                  found=1
+                  break
+                fi
+              done <<< "$job_ids"
+            fi
+            if [ "$found" -eq 1 ]; then
+              echo "run $run_id: hosted-runner acquisition failure — re-running failed jobs"
+              if ! gh run rerun "$run_id" --failed --repo "$GH_REPO"; then
+                echo "warning: re-run request for $run_id was rejected (already re-running?); next tick will retry"
+              fi
+            else
+              echo "run $run_id: genuine failure (no runner-acquisition annotation) — leaving red"
+            fi
+          done <<< "$run_ids"
