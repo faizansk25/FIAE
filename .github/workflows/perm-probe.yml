@@ -35,12 +35,12 @@ jobs:
           fi
           echo "--- probe 2: rerun endpoint (actions: write) on a green run ---"
           echo "--- expect a state rejection (rc!=0, no 403) => auth accepted ---"
-          out=$(gh run rerun 37468733944 --failed --repo "$GH_REPO" 2>&1)
-          rc=$?
+          rc=0
+          out=$(gh run rerun 37468733944 --failed --repo "$GH_REPO" 2>&1) || rc=$?
           echo "rc=$rc"
           echo "out=$out"
           case "$out" in
-            *"Resource not accessible"*|*"resource not accessible"*|*"403"*)
+            *"Resource not accessible"*|*"resource not accessible"*|*"403"*|*"Not Found"*|*"404"*)
               echo "PROBE2 FAIL: permission denied under GITHUB_TOKEN"; exit 1 ;;
           esac
           if [ "$rc" -eq 0 ]; then
