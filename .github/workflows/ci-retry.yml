@@ -36,19 +36,26 @@ jobs:
           GH_REPO: ${{ github.repository }}
         run: |
           set -euo pipefail
+          # One retry per API call: run steps execute under bash -e, so a
+          # transient API blip would otherwise turn the healer itself red —
+          # and its own failures are never self-healed. Persistent errors
+          # still fail loudly after the retry.
+          ghapi() {
+            gh api "$1" --jq "$2" 2>/dev/null || { sleep 5; gh api "$1" --jq "$2"; }
+          }
           cutoff=$(date -u -d '2 hours ago' +%Y-%m-%dT%H:%M:%SZ)
           # First-attempt runs only, at most two retries: run_attempt becomes
           # 2 after our first re-run, 3 after the second, then we stop.
-          run_ids=$(gh api "repos/$GH_REPO/actions/runs?per_page=50" \
-            --jq ".workflow_runs[] | select(.conclusion == \"failure\" and .run_attempt <= 2 and .created_at >= \"$cutoff\") | .id")
+          run_ids=$(ghapi "repos/$GH_REPO/actions/runs?per_page=50" \
+            ".workflow_runs[] | select(.conclusion == \"failure\" and .run_attempt <= 2 and .created_at >= \"$cutoff\") | .id")
           if [ -z "$run_ids" ]; then
             echo "No failed runs in the last 2 hours — nothing to heal."
             exit 0
           fi
           while IFS= read -r run_id; do
             [ -z "$run_id" ] && continue
-            job_ids=$(gh api "repos/$GH_REPO/actions/runs/$run_id/jobs?per_page=50" \
-              --jq '.jobs[] | select(.conclusion != null and .conclusion != "success") | .id')
+            job_ids=$(ghapi "repos/$GH_REPO/actions/runs/$run_id/jobs?per_page=50" \
+              '.jobs[] | select(.conclusion != null and .conclusion != "success") | .id')
             found=0
             if [ -n "$job_ids" ]; then
               while IFS= read -r job_id; do
